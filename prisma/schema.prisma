@@ -6,10 +6,129 @@
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../generated/prisma"
+  output   = "../node_modules/.prisma/client"
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+// Custom enum for user roles
+enum Role {
+  MEMBER // Regular club member
+  PANEL  // Admin/Panel member
+}
+
+// NextAuth Required Models
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts") // Explicitly map table name
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions") // Explicitly map table name
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  role          Role      @default(MEMBER) // Added custom role field
+  lastSeen      DateTime? @updatedAt      // Added field for last seen timestamp
+
+  accounts Account[]
+  sessions Session[]
+  adminLogs AdminLog[] // Add the relation field for AdminLog
+
+  @@map("users") // Explicitly map table name
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens") // Explicitly map table name
+}
+
+// --- ClubPulse Specific Models ---
+
+enum EmailStatus {
+  QUEUED
+  SENT
+  CANCELED
+  FAILED
+}
+
+model WarningLog {
+  id            String   @id @default(cuid())
+  recipientEmail String
+  recipientName String?
+  activityCount Int
+  threshold     Int      // Store the threshold at the time of logging
+  templateUsed  String   // e.g., "RoleBasedTemplate" or "PersonalityTagTemplate"
+  status        EmailStatus // Track if the associated email was sent/canceled etc.
+  emailSentAt   DateTime? // Timestamp when the email was actually sent
+  emailOpened   Boolean  @default(false) // Track email opens (via SendGrid webhook later)
+  createdAt     DateTime @default(now())
+
+  @@map("warning_logs")
+}
+
+model EmailQueue {
+  id             String     @id @default(cuid())
+  recipientEmail String
+  recipientName  String?
+  subject        String
+  bodyHtml       String     @db.Text // Store the rendered MJML/HTML
+  template       String     // Identifier for the template used (e.g., "low_activity_member")
+  status         EmailStatus @default(QUEUED)
+  scheduledAt    DateTime?  // Optional: If scheduling is implemented
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  // Optional: Link to the user who triggered/approved this email
+  // triggeredById String?
+  // triggeredBy   User?    @relation("TriggeredEmails", fields: [triggeredById], references: [id])
+  // approvedById  String?
+  // approvedBy    User?    @relation("ApprovedEmails", fields: [approvedById], references: [id])
+
+  @@map("email_queue")
+}
+
+model AdminLog {
+  id              String   @id @default(cuid())
+  adminUserId     String
+  adminUserEmail  String   // Store email for quick lookup even if user is deleted
+  action          String   // e.g., "approved_email", "updated_threshold", "triggered_manual_check"
+  details         Json?    // Store additional context as JSON (e.g., { emailId: '...', threshold: 5 })
+  timestamp       DateTime @default(now())
+
+  adminUser User @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+
+  @@map("admin_logs")
 }

@@ -2,9 +2,22 @@
 
 import { useSession, signIn, signOut } from "next-auth/react";
 import Image from "next/image";
+import { useState, useTransition } from "react"; // Import useState and useTransition
+import { checkMemberActivity } from "@/app/actions"; // Import the server action
 
 export default function Home() {
   const { data: session, status } = useSession();
+  const [isPending, startTransition] = useTransition(); // Hook for loading state
+  const [actionMessage, setActionMessage] = useState<string | null>(null); // State for action result message
+
+  // Function to handle the button click
+  const handleCheckActivity = () => {
+    startTransition(async () => {
+      setActionMessage("Checking activity...");
+      const result = await checkMemberActivity();
+      setActionMessage(result.message);
+    });
+  };
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-8 font-[family-name:var(--font-geist-sans)]">
@@ -27,9 +40,27 @@ export default function Home() {
             )}
             <p className="font-semibold">{session.user?.name}</p>
             <p className="text-sm text-gray-600">{session.user?.email}</p>
+            <p className="text-xs text-gray-500">(Role: {session.user?.role})</p>
+            
+            <div className="mt-4 p-4 border-t w-full flex flex-col items-center gap-2">
+              <h2 className="text-lg font-medium">Admin Actions (Test)</h2>
+              <button
+                onClick={handleCheckActivity}
+                disabled={isPending}
+                className="px-4 py-2 font-medium text-white bg-green-600 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isPending ? "Checking..." : "Check Member Activity"}
+              </button>
+              {actionMessage && (
+                 <p className={`mt-2 text-sm ${actionMessage.startsWith("Failed") || actionMessage.startsWith("An unexpected") ? 'text-red-600' : 'text-gray-600'}`}>
+                  {actionMessage}
+                 </p>
+              )}
+            </div>
+            
             <button
               onClick={() => signOut()}
-              className="px-4 py-2 font-medium text-white bg-red-600 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+              className="mt-4 px-4 py-2 font-medium text-white bg-red-600 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
             >
               Sign Out
             </button>
