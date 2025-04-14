@@ -28,7 +28,7 @@ interface ClubMemberData {
 const ACTIVITY_THRESHOLD = 5;
 // Define the range to read from the sheet (e.g., 'Sheet1!A2:F' to read columns A-F starting from row 2)
 // *** IMPORTANT: Update this range based on your actual sheet name and data columns ***
-const SHEET_RANGE = 'members!A2:F';
+const SHEET_RANGE = 'Sheet1!A2:F';
 
 export async function checkMemberActivity(): Promise<{ success: boolean; message: string; checked?: number; flagged?: number; errors?: number }> {
   console.log("Starting member activity check...");
