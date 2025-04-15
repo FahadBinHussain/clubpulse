@@ -7,7 +7,7 @@
     "dev": "next dev --turbopack",
     "dev:regular": "next dev",
     "prebuild": "node utils-patch.js",
-    "build": "next build",
+    "build": "npx prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
     "prisma:generate": "dotenv -e .env.local -- npx prisma generate",
