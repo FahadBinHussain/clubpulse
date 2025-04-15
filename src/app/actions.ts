@@ -8,6 +8,10 @@ import { CreateEmailResponse } from 'resend';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { revalidatePath } from 'next/cache';
+// Import necessary modules for MJML rendering
+import mjml from 'mjml';
+import fs from 'fs/promises';
+import path from 'path';
 
 // Define the expected structure for a row from the Google Sheet
 // Adjust indices based on your actual column order
@@ -58,6 +62,21 @@ export async function checkMemberActivity(): Promise<{ success: boolean; message
   let flaggedCount = 0;
   let belowThresholdCount = 0;
   let errorCount = 0;
+
+  // --- Pre-load MJML template --- 
+  let mjmlTemplateContent = '';
+  try {
+    // Construct the absolute path to the template file
+    const templatePath = path.join(process.cwd(), 'src', 'emails', 'low_activity_warning.mjml');
+    mjmlTemplateContent = await fs.readFile(templatePath, 'utf-8');
+    console.log("Successfully loaded MJML template.");
+  } catch (templateError) {
+    console.error("Failed to load MJML template:", templateError);
+    // Decide if you want to proceed without the template or return an error
+    // For now, return an error as the template is crucial
+    return { success: false, message: "Failed to load email template. Cannot proceed." };
+  }
+  // --- End Pre-load --- 
 
   try {
     const rawData = await getSheetData(sheetMemberDataRange);
@@ -170,21 +189,56 @@ export async function checkMemberActivity(): Promise<{ success: boolean; message
         flaggedCount++;
         console.log(`Flagging member: ${member.email} (Activity: ${member.activityCount})`);
 
-        // TODO: Determine template and content based on role/tag later
-        const emailSubject = `Club Activity Alert for ${member.name}`;
-        const emailBody = `Hi ${member.name},\n\nYour current activity count is ${member.activityCount}, which is below the threshold of ${ACTIVITY_THRESHOLD}. Please increase your participation.\n\nRegards,\nClubPulse`;
-        const templateIdentifier = 'low_activity_generic'; // Placeholder
+        // Determine template and render content
+        const emailSubject = `Club Activity Alert for ${member.name || 'Member'}`;
+        // Placeholder for template selection logic
+        const templateIdentifier = 'low_activity_generic'; 
+        let renderedHtml = '';
+
+        try {
+            // Personalize the MJML template
+            const personalizedMjml = mjmlTemplateContent
+                .replace(/{{name}}/g, member.name || 'Member')
+                .replace(/{{activityCount}}/g, member.activityCount.toString())
+                .replace(/{{threshold}}/g, ACTIVITY_THRESHOLD.toString());
+
+            // Render MJML to HTML
+            const { html, errors: mjmlErrors } = mjml(personalizedMjml, {
+                // Optional: Add validation options if needed
+                // validationLevel: 'strict' 
+            });
+
+            if (mjmlErrors.length > 0) {
+                console.warn(`MJML rendering errors for ${member.email}:`, mjmlErrors);
+                // Decide how to handle MJML errors - maybe fall back to plain text or log and skip
+                // For now, log the error and proceed with potentially broken HTML or skip
+                errorCount++;
+                continue; // Skip this member if template rendering failed badly
+            }
+            renderedHtml = html;
+
+        } catch (renderError) {
+            console.error(`Error rendering MJML template for ${member.email}:`, renderError);
+            errorCount++;
+            continue; // Skip this member on rendering error
+        }
+        
+        // Only proceed if HTML was successfully rendered
+        if (!renderedHtml) { 
+            console.warn(`Skipping DB entry for ${member.email} due to empty rendered HTML.`);
+            continue;
+        }
 
         try {
           // Use Prisma transaction to ensure both operations succeed or fail together
           await prisma.$transaction([
-            // 1. Create EmailQueue entry
+            // 1. Create EmailQueue entry with rendered HTML
             prisma.emailQueue.create({
               data: {
                 recipientEmail: member.email,
                 recipientName: member.name,
                 subject: emailSubject,
-                bodyHtml: emailBody, // Store plain text for now, replace with HTML/MJML later
+                bodyHtml: renderedHtml, // <-- Use the rendered HTML
                 template: templateIdentifier,
                 status: EmailStatus.QUEUED,
               },
@@ -197,7 +251,7 @@ export async function checkMemberActivity(): Promise<{ success: boolean; message
                 activityCount: member.activityCount,
                 threshold: ACTIVITY_THRESHOLD,
                 templateUsed: templateIdentifier,
-                status: EmailStatus.QUEUED, // Matches EmailQueue initial status
+                status: EmailStatus.QUEUED, 
               },
             }),
           ]);
