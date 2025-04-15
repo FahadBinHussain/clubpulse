@@ -1,4 +1,4 @@
-import { Resend } from 'resend';
+import { Resend, CreateEmailResponse } from 'resend';
 
 const resendApiKey = process.env.RESEND_API_KEY;
 
@@ -24,7 +24,7 @@ interface SendEmailParams {
  * @param params - Email parameters (to, subject, html, etc.).
  * @returns A promise that resolves with the SendResponse or null if sending is disabled or fails.
  */
-export async function sendEmail(params: SendEmailParams): Promise<Awaited<ReturnType<typeof resend.emails.send>> | null> {
+export async function sendEmail(params: SendEmailParams): Promise<CreateEmailResponse | null> {
   if (!resend) {
     console.error("Resend client not initialized. Cannot send email.");
     return null; // Indicate failure or disabled state
@@ -41,7 +41,7 @@ export async function sendEmail(params: SendEmailParams): Promise<Awaited<Return
       to: to,
       subject: subject,
       html: html, // Use pre-rendered HTML for now
-      reply_to: reply_to,
+      replyTo: reply_to,
       // react: params.react // Add this later for React components/MJML
     });
     console.log(`Email sent successfully via Resend: ID ${response.data?.id}`);
