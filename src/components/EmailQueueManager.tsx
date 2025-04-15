@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useTransition } from 'react';
-import { getEmailQueue, updateEmailStatus } from '@/app/actions';
+import { getEmailQueue, updateEmailStatus, checkMemberActivity } from '@/app/actions';
 import { EmailStatus } from '@prisma/client';
 
 interface QueuedEmail {
@@ -19,39 +19,73 @@ export default function EmailQueueManager() {
   const [error, setError] = useState<string | null>(null);
   const [isUpdating, startUpdateTransition] = useTransition();
   const [updateMessage, setUpdateMessage] = useState<string | null>(null);
+  const [isChecking, startCheckTransition] = useTransition();
+  const [checkMessage, setCheckMessage] = useState<string | null>(null);
 
-  // Function to fetch queued emails
-  const fetchQueue = async () => {
-    setIsLoading(true);
-    setError(null);
-    setUpdateMessage(null); // Clear previous update messages
-    try {
-      const result = await getEmailQueue();
-      if (result.success && result.emails) {
-        // Convert createdAt string back to Date object if needed (Prisma might return strings)
-        const emailsWithDate = result.emails.map(email => ({...
-          email,
-          createdAt: new Date(email.createdAt)
-        }));
-        setQueuedEmails(emailsWithDate);
-      } else {
-        setError(result.message || "Failed to fetch email queue.");
-        setQueuedEmails([]); // Clear queue on error
+  const handleCheckAndRefresh = () => {
+    startCheckTransition(async () => {
+      setIsLoading(true);
+      setError(null);
+      setUpdateMessage(null);
+      setCheckMessage("Checking sheet & queuing new warnings...");
+
+      try {
+        const checkResult = await checkMemberActivity();
+        setCheckMessage(checkResult.message);
+        if (!checkResult.success) {
+            console.warn("checkMemberActivity failed but proceeding to fetch queue:", checkResult.message);
+        }
+      } catch (err) {
+        setCheckMessage("An error occurred during sheet check.");
+        console.error("Error calling checkMemberActivity:", err);
       }
-    } catch (err) {
-      setError("An unexpected error occurred while fetching the queue.");
-      console.error(err);
-      setQueuedEmails([]);
-    }
-    setIsLoading(false);
+
+      try {
+        const result = await getEmailQueue();
+        if (result.success && result.emails) {
+          const emailsWithDate = result.emails.map(email => ({...
+            email,
+            createdAt: new Date(email.createdAt)
+          }));
+          setQueuedEmails(emailsWithDate);
+        } else {
+          setError(result.message || "Failed to fetch email queue.");
+          setQueuedEmails([]);
+        }
+      } catch (err) {
+        setError("An unexpected error occurred while fetching the queue.");
+        console.error(err);
+        setQueuedEmails([]);
+      }
+      
+      setIsLoading(false);
+    });
   };
 
-  // Fetch emails on component mount
   useEffect(() => {
-    fetchQueue();
+    const initialFetch = async () => {
+        setIsLoading(true);
+        setError(null);
+        try {
+            const result = await getEmailQueue();
+            if (result.success && result.emails) {
+                const emailsWithDate = result.emails.map(email => ({...
+                  email,
+                  createdAt: new Date(email.createdAt)
+                }));
+                setQueuedEmails(emailsWithDate);
+            } else {
+                setError(result.message || "Failed to fetch email queue.");
+            }
+        } catch (err) {
+            setError("An unexpected error occurred while fetching the queue.");
+            console.error(err);
+        }
+        setIsLoading(false);
+    };
+    initialFetch();
   }, []);
 
-  // Function to handle status update
   const handleUpdate = (emailId: string, status: EmailStatus) => {
     startUpdateTransition(async () => {
         setUpdateMessage(`Updating email ${emailId} to ${status}...`);
@@ -59,11 +93,6 @@ export default function EmailQueueManager() {
             const result = await updateEmailStatus(emailId, status);
             setUpdateMessage(result.message); 
             if(result.success) {
-                // Refresh the queue after successful update
-                // Option 1: Refetch the whole list (simple)
-                // fetchQueue(); 
-                
-                // Option 2: Remove the updated email from the current state (more responsive)
                 setQueuedEmails(prevEmails => prevEmails.filter(email => email.id !== emailId));
             } 
         } catch (err) {
@@ -75,10 +104,21 @@ export default function EmailQueueManager() {
 
   return (
     <div className="mt-6 p-4 border rounded-lg shadow-md w-full max-w-4xl">
-      <h2 className="text-xl font-semibold mb-4">Email Approval Queue</h2>
+      <div className="flex justify-between items-center mb-2">
+        <h2 className="text-xl font-semibold">Email Approval Queue</h2>
+        <button 
+          onClick={handleCheckAndRefresh}
+          disabled={isLoading || isUpdating || isChecking}
+          className="px-3 py-1 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-300 disabled:opacity-50"
+        >
+          {isChecking ? "Checking..." : "Check Sheet & Refresh Queue"}
+        </button>
+      </div>
+
+      {checkMessage && <p className={`text-sm mb-2 ${checkMessage.includes("Failed") || checkMessage.includes("Error") ? 'text-red-600' : 'text-blue-600'}`}>{checkMessage}</p>}
 
       {isLoading && <p>Loading email queue...</p>}
-      {error && <p className="text-red-600">Error: {error}</p>}
+      {error && <p className="text-red-600">Error fetching queue: {error}</p>}
       {updateMessage && <p className={`text-sm mb-2 ${updateMessage.includes("Failed") || updateMessage.includes("Error") ? 'text-red-600' : 'text-blue-600'}`}>{updateMessage}</p>}
 
       {!isLoading && !error && queuedEmails.length === 0 && (
@@ -105,14 +145,14 @@ export default function EmailQueueManager() {
                   <td className="px-4 py-2 whitespace-nowrap text-sm font-medium space-x-2">
                     <button
                       onClick={() => handleUpdate(email.id, EmailStatus.APPROVED)}
-                      disabled={isUpdating}
+                      disabled={isUpdating || isChecking}
                       className="text-green-600 hover:text-green-900 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Approve
                     </button>
                     <button
                       onClick={() => handleUpdate(email.id, EmailStatus.CANCELED)}
-                      disabled={isUpdating}
+                      disabled={isUpdating || isChecking}
                       className="text-red-600 hover:text-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Cancel

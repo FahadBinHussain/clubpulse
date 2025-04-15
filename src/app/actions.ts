@@ -56,6 +56,7 @@ export async function checkMemberActivity(): Promise<{ success: boolean; message
 
   let checkedCount = 0;
   let flaggedCount = 0;
+  let belowThresholdCount = 0;
   let errorCount = 0;
 
   try {
@@ -140,22 +141,32 @@ export async function checkMemberActivity(): Promise<{ success: boolean; message
     // --- Threshold Check and DB Operations ---
     for (const member of membersToProcess) {
       if (member.activityCount < ACTIVITY_THRESHOLD) {
+        belowThresholdCount++;
 
-        // ---> Check for existing QUEUED email for this recipient <--- 
-        const existingQueuedEmail = await prisma.emailQueue.findFirst({
+        // ---> Check for existing QUEUED, APPROVED, CANCELED, or SENT email for this recipient <--- 
+        const existingNonFailedEmail = await prisma.emailQueue.findFirst({
           where: {
             recipientEmail: member.email,
-            status: EmailStatus.QUEUED,
+            status: {
+              // Include CANCELED and SENT in the statuses to check
+              in: [
+                EmailStatus.QUEUED,
+                EmailStatus.APPROVED,
+                EmailStatus.CANCELED,
+                EmailStatus.SENT 
+              ] 
+            }
           },
-          select: { id: true } // Only need to know if it exists
+          select: { id: true, status: true } // Get status for logging
         });
 
-        if (existingQueuedEmail) {
-          console.log(`Skipping duplicate QUEUED email for ${member.email}. Existing ID: ${existingQueuedEmail.id}`);
-          continue; // Skip to the next member if a QUEUED email already exists
+        if (existingNonFailedEmail) {
+          console.log(`Skipping email for ${member.email}. An email is already pending, was canceled, or was sent (ID: ${existingNonFailedEmail.id}, Status: ${existingNonFailedEmail.status}).`);
+          continue; // Skip to the next member
         }
         // ---> End Check <--- 
 
+        // Only proceed if no QUEUED, APPROVED, CANCELED, or SENT email was found
         flaggedCount++;
         console.log(`Flagging member: ${member.email} (Activity: ${member.activityCount})`);
 
@@ -200,7 +211,7 @@ export async function checkMemberActivity(): Promise<{ success: boolean; message
       }
     }
 
-    const message = `Activity check complete. Checked: ${checkedCount}, Flagged: ${flaggedCount}, Errors: ${errorCount}.`;
+    const message = `Activity check complete. Checked: ${checkedCount}, Below Threshold: ${belowThresholdCount}, Newly Flagged: ${flaggedCount}, Errors: ${errorCount}.`;
     console.log(message);
     return { success: true, message, checked: checkedCount, flagged: flaggedCount, errors: errorCount };
 
@@ -336,6 +347,9 @@ export async function getEmailQueue(): Promise<{ success: boolean; message: stri
         // Exclude bodyHtml for brevity in the list view
       }
     });
+
+    // Log the emails being returned
+    console.log("Emails being returned by getEmailQueue:", JSON.stringify(queuedEmails, null, 2));
 
     return { success: true, message: "Fetched queued emails.", emails: queuedEmails };
 
