@@ -18,6 +18,7 @@ datasource db {
 enum Role {
   MEMBER // Regular club member
   PANEL  // Admin/Panel member
+  GUEST  // User not found in member or panel sheets
 }
 
 // NextAuth Required Models
@@ -57,7 +58,7 @@ model User {
   email         String?   @unique
   emailVerified DateTime?
   image         String?
-  role          Role      @default(MEMBER) // Added custom role field
+  role          Role      @default(GUEST) // Changed default to GUEST
   lastSeen      DateTime? @updatedAt      // Added field for last seen timestamp
 
   accounts Account[]
@@ -80,6 +81,7 @@ model VerificationToken {
 
 enum EmailStatus {
   QUEUED
+  APPROVED
   SENT
   CANCELED
   FAILED

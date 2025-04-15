@@ -7,82 +7,112 @@ import { Adapter } from "next-auth/adapters"; // Import Adapter type
 import { Role } from "@prisma/client"; // <-- Import Role enum
 import { getSheetData } from "@/lib/googleSheets"; // <-- Import sheet data function
 
-// Define the range for the Panel Members sheet via environment variable
+// Define the ranges for the sheets via environment variables
 const panelSheetRange = process.env.GOOGLE_SHEET_PANEL_MEMBERS_RANGE;
-// const PANEL_SHEET_RANGE = 'PanelMembers!B2:B'; // <-- Removed hardcoded value
+const memberSheetRange = process.env.GOOGLE_SHEET_MEMBER_DATA_RANGE;
+// Assuming email is the second column (index 1) in the member sheet based on COLUMN_INDICES in actions.ts
+const MEMBER_EMAIL_COLUMN_INDEX = 1; 
 
-const authOptions: NextAuthOptions = {
+// Export the authOptions constant
+export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma) as Adapter,
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      // Profile callback: Returns standard info. Adapter handles creation with default role (GUEST).
+      profile(profile) {
+        console.log("profile callback triggered for:", profile.email);
+        // Provide the full User structure, including a default role.
+        // The actual role sync happens in events.signIn.
+        return {
+          id: profile.sub,
+          name: profile.name,
+          email: profile.email,
+          image: profile.picture,
+          role: Role.GUEST // Provide default role for adapter compatibility
+        };
+      },
     }),
   ],
-  callbacks: {
-    async signIn({ user, account, profile }) {
-      console.log("signIn callback triggered for user:", user.email);
+  events: {
+    // Event fires AFTER successful sign-in and adapter user creation/linking
+    async signIn({ user, isNewUser }) {
+      console.log(`signIn event for user: ${user.email}. New user: ${isNewUser}`);
+
       if (!user.email) {
-        console.error("User email not available during signIn.");
-        return false; // Prevent sign-in if email is missing
+        console.error("User email is missing in signIn event.");
+        return; // Stop processing if no email
       }
+      const userEmailLower = user.email.toLowerCase();
+      // Keep explicit type annotation in case linter is sensitive
+      let correctRole: Role = Role.GUEST; 
 
       try {
-        // Check if the panel range is configured
+        // 1. Check Panel Sheet
+        let isPanel = false;
         if (!panelSheetRange) {
-          console.error("GOOGLE_SHEET_PANEL_MEMBERS_RANGE environment variable is not set.");
-          // Fail open: allow login as MEMBER, but log the error.
-          return true; 
-        }
-
-        // Fetch panel member emails from Google Sheet
-        const panelData = await getSheetData(panelSheetRange); // <-- Use env var here
-        
-        if (panelData === null) {
-          console.error("Failed to fetch panel member data from Google Sheet.");
-          // Decide policy: fail open (allow login as MEMBER) or fail closed (deny login)?
-          // For now, let's fail open but log the error.
-          return true; // Allow login but role won't be elevated
-        }
-
-        const panelEmails = panelData.flat().map(email => String(email).trim().toLowerCase());
-        console.log("Panel emails fetched:", panelEmails);
-
-        const isPanelMember = panelEmails.includes(user.email.toLowerCase());
-        console.log(`User ${user.email} is panel member: ${isPanelMember}`);
-
-        if (isPanelMember) {
-          // Update user role in the database if they are a panel member
-          await prisma.user.update({
-            where: { email: user.email },
-            data: { role: Role.PANEL },
-          });
-          console.log(`Updated role to PANEL for user: ${user.email}`);
+          console.warn("Panel sheet range not configured. Cannot check for PANEL role.");
         } else {
-           // Optional: Ensure non-panel members are explicitly MEMBER
-           // This might be redundant if the default is MEMBER, but ensures consistency
-           await prisma.user.update({
-             where: { email: user.email },
-             data: { role: Role.MEMBER }, // Ensure role is MEMBER
-           });
-           console.log(`Ensured role is MEMBER for user: ${user.email}`);
+          const panelData = await getSheetData(panelSheetRange);
+          if (panelData) {
+            const panelEmails = panelData.flat().map(e => String(e).trim().toLowerCase());
+            if (panelEmails.includes(userEmailLower)) {
+              correctRole = Role.PANEL;
+              isPanel = true;
+              console.log(`User ${user.email} is a PANEL member.`);
+            }
+          } else {
+             console.error("Failed to fetch panel data during signIn event.");
+          }
         }
 
-        return true; // Allow sign-in
-      } catch (error) {
-        console.error("Error during signIn callback (role check):", error);
-        // Decide policy on error: fail open or closed?
-        return false; // Prevent sign-in on unexpected error during role check
-      }
-    },
+        // 2. If not Panel, check Member Sheet
+        if (!isPanel) {
+           if (!memberSheetRange) {
+               console.warn("Member sheet range not configured. Cannot check for MEMBER role.");
+           } else {
+               const memberData = await getSheetData(memberSheetRange);
+               if (memberData) {
+                   const memberEmails = memberData
+                       .map(row => row && String(row[MEMBER_EMAIL_COLUMN_INDEX]).trim().toLowerCase())
+                       .filter(email => email);
+                   if (memberEmails.includes(userEmailLower)) {
+                       correctRole = Role.MEMBER;
+                       console.log(`User ${user.email} is a MEMBER.`);
+                   } else {
+                        // Explicitly log if user is not found in member sheet either
+                        console.log(`User ${user.email} is not found in member sheet, remaining GUEST.`);
+                   }
+               } else {
+                  console.error("Failed to fetch member data during signIn event.");
+               }
+           }
+        }
 
-    // Session callback remains the same, it reads the role set by signIn/adapter
-    async session({ session, user }) {
-      if (session.user) {
-        session.user.id = user.id;
-        session.user.role = user.role; // Role comes from the DB user object
+        // 3. Update DB Role
+        // Always update the role in the DB on sign in to ensure it's synchronized with sheets.
+         console.log(`Final determined role: ${correctRole}. Updating database...`);
+         await prisma.user.update({
+             where: { email: user.email }, // Use email which is unique
+             data: { role: correctRole },
+         });
+         console.log(`Database role updated to ${correctRole} for ${user.email}`);
+
+      } catch (error) {
+        console.error(`Error during role sync in signIn event for ${user.email}:`, error);
       }
-      return session;
+    }
+  },
+  callbacks: {
+    // Session callback needs to read the potentially updated user role
+    async session({ session, user }) {
+      // The 'user' object here comes from the database *after* the update in events.signIn
+       if (session.user) {
+         session.user.id = user.id;
+         session.user.role = user.role; // Role reflects the latest DB value
+       }
+       return session;
     },
   },
   // Add other configurations here if needed (e.g., secret, pages)

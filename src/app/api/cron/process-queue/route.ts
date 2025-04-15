@@ -1,39 +1,28 @@
 import { NextResponse } from 'next/server';
 import { processEmailQueue } from '@/app/actions'; // Import the Server Action
 
-export async function POST(request: Request) {
-  console.log('Received request for /api/cron/process-queue');
+// Export a GET handler for the process-queue cron job
+export async function GET(request: Request) {
+  // Protection: Check for Vercel's cron secret
   const authHeader = request.headers.get('authorization');
-
-  // 1. Verify Authorization Header
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    console.warn('Unauthorized access attempt to /api/cron/process-queue');
+  if (process.env.NODE_ENV === 'production' && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    console.warn('Unauthorized attempt to access process-queue cron endpoint.');
     return new NextResponse('Unauthorized', { status: 401 });
   }
 
-  console.log('Authorization successful for /api/cron/process-queue');
+  console.log("Cron job triggered: Starting processEmailQueue...");
 
   try {
-    // 2. Call the Server Action
-    console.log('Calling processEmailQueue Server Action...');
+    // Call the server action to process the email queue
     const result = await processEmailQueue();
-    console.log('processEmailQueue Server Action finished.', result);
+    console.log("Cron job finished processEmailQueue:", result);
 
-    // 3. Return the result
-    if (result.success) {
-      return NextResponse.json({ 
-        message: result.message,
-        processed: result.processed,
-        sent: result.sent,
-        failed: result.failed 
-      });
-    } else {
-      // Return a 500 status if the action itself reported an error
-      return NextResponse.json({ message: result.message }, { status: 500 });
-    }
+    // Return the result message and status (e.g., number processed, sent, failed)
+    return NextResponse.json(result, { status: result.success ? 200 : 500 });
+
   } catch (error) {
-    // Catch any unexpected errors during the action call
-    console.error('Unexpected error in /api/cron/process-queue:', error);
-    return NextResponse.json({ message: 'Internal Server Error' }, { status: 500 });
+    console.error("Error running process-queue cron job:", error);
+    // Use NextResponse for consistency in error handling
+    return new NextResponse('Internal Server Error during queue processing', { status: 500 });
   }
 } 

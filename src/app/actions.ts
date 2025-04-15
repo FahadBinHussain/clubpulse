@@ -2,9 +2,12 @@
 
 import { prisma } from '@/lib/prisma';
 import { getSheetData } from '@/lib/googleSheets';
-import { EmailStatus } from '@prisma/client';
+import { EmailStatus, Role } from '@prisma/client';
 import { sendEmail } from '@/lib/resend';
 import { CreateEmailResponse } from 'resend';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { revalidatePath } from 'next/cache';
 
 // Define the expected structure for a row from the Google Sheet
 // Adjust indices based on your actual column order
@@ -35,6 +38,15 @@ const sheetMemberDataRange = process.env.GOOGLE_SHEET_MEMBER_DATA_RANGE;
 
 export async function checkMemberActivity(): Promise<{ success: boolean; message: string; checked?: number; flagged?: number; errors?: number }> {
   console.log("Starting member activity check...");
+
+  // --- Authorization Check --- 
+  const session = await getServerSession(authOptions);
+  if (!session || session.user?.role !== Role.PANEL) {
+      console.warn('Unauthorized attempt to run checkMemberActivity. User:', session?.user?.email);
+      return { success: false, message: "Unauthorized: You do not have permission to perform this action." };
+  }
+  console.log(`Authorized user ${session.user.email} is performing activity check.`);
+  // --- End Authorization Check ---
 
   // Check if the range is configured
   if (!sheetMemberDataRange) {
@@ -128,6 +140,22 @@ export async function checkMemberActivity(): Promise<{ success: boolean; message
     // --- Threshold Check and DB Operations ---
     for (const member of membersToProcess) {
       if (member.activityCount < ACTIVITY_THRESHOLD) {
+
+        // ---> Check for existing QUEUED email for this recipient <--- 
+        const existingQueuedEmail = await prisma.emailQueue.findFirst({
+          where: {
+            recipientEmail: member.email,
+            status: EmailStatus.QUEUED,
+          },
+          select: { id: true } // Only need to know if it exists
+        });
+
+        if (existingQueuedEmail) {
+          console.log(`Skipping duplicate QUEUED email for ${member.email}. Existing ID: ${existingQueuedEmail.id}`);
+          continue; // Skip to the next member if a QUEUED email already exists
+        }
+        // ---> End Check <--- 
+
         flaggedCount++;
         console.log(`Flagging member: ${member.email} (Activity: ${member.activityCount})`);
 
@@ -182,59 +210,55 @@ export async function checkMemberActivity(): Promise<{ success: boolean; message
   }
 }
 
-// --- New Server Action: Process Email Queue ---
+// --- Server Action: Process Email Queue (Sends APPROVED emails) ---
 export async function processEmailQueue(): Promise<{ success: boolean; message: string; processed?: number; sent?: number; failed?: number }> {
-    console.log("Starting email queue processing...");
+    console.log("Starting approved email queue processing..."); // Updated log
     let processedCount = 0;
     let sentCount = 0;
     let failedCount = 0;
 
     try {
-        // 1. Fetch queued emails
+        // 1. Fetch APPROVED emails
         const emailsToProcess = await prisma.emailQueue.findMany({
             where: {
-                status: EmailStatus.QUEUED,
+                status: EmailStatus.APPROVED, // <-- Changed from QUEUED to APPROVED
             },
         });
 
         processedCount = emailsToProcess.length;
 
         if (processedCount === 0) {
-            const message = "Email queue processing complete. No emails were pending.";
+            const message = "Email queue processing complete. No emails were approved for sending."; // Updated log
             console.log(message);
             return { success: true, message, processed: 0, sent: 0, failed: 0 };
         }
 
-        console.log(`Found ${processedCount} emails in the queue to process.`);
+        console.log(`Found ${processedCount} emails approved for sending.`); // Updated log
 
         // 2. Process each email
         for (const email of emailsToProcess) {
             let finalStatus: EmailStatus;
             let sendResult: CreateEmailResponse | null = null; // Initialize sendResult
             try {
-                console.log(`Attempting to send email ID ${email.id} to ${email.recipientEmail}`);
-                // 3. Attempt to send email (Corrected parameters and result handling)
+                console.log(`Attempting to send APPROVED email ID ${email.id} to ${email.recipientEmail}`); // Updated log
+                // 3. Attempt to send email
                 sendResult = await sendEmail({
                     to: email.recipientEmail,
                     subject: email.subject,
-                    html: email.bodyHtml, // Pass content as 'html'
+                    html: email.bodyHtml,
                 });
 
-                // Check Resend response structure: { data: { id: ... }, error: null } on success
-                // or { data: null, error: { message: ..., name: ... } } on failure
-                if (sendResult && !sendResult.error) { // Success if result exists and has no error
+                if (sendResult && !sendResult.error) {
                     finalStatus = EmailStatus.SENT;
                     sentCount++;
                     console.log(`Successfully sent email ID ${email.id} to ${email.recipientEmail}. Resend ID: ${sendResult.data?.id}`);
                 } else {
                     finalStatus = EmailStatus.FAILED;
                     failedCount++;
-                    // Log the specific Resend error if available
                     const errorMessage = sendResult?.error?.message || 'Unknown Resend error';
                     console.error(`Failed to send email ID ${email.id} to ${email.recipientEmail}: ${errorMessage}`);
                 }
             } catch (sendError) {
-                // Catch errors during the await sendEmail call itself (e.g., network issues)
                 finalStatus = EmailStatus.FAILED;
                 failedCount++;
                 console.error(`Error processing email ID ${email.id} for ${email.recipientEmail} (exception during send):`, sendError);
@@ -245,30 +269,29 @@ export async function processEmailQueue(): Promise<{ success: boolean; message: 
                 await prisma.$transaction([
                     prisma.emailQueue.update({
                         where: { id: email.id },
-                        data: { status: finalStatus },
+                        data: { status: finalStatus }, // Update EmailQueue to SENT or FAILED
                     }),
-                    // Find the related WarningLog entry (assuming one exists)
-                    // This might need refinement if the relationship isn't guaranteed or unique
+                    // Update related WarningLog entry
                     prisma.warningLog.updateMany({
                          where: {
                              recipientEmail: email.recipientEmail,
-                             templateUsed: email.template, // Match based on email and template
-                             status: EmailStatus.QUEUED // Only update logs that were queued
+                             templateUsed: email.template, 
+                             status: EmailStatus.APPROVED // Only update logs whose status was APPROVED
                          },
-                         data: { status: finalStatus },
+                         data: { 
+                            status: finalStatus, // Update WarningLog to SENT or FAILED
+                            emailSentAt: finalStatus === EmailStatus.SENT ? new Date() : null // Add timestamp if sent
+                         },
                     }),
                 ]);
                  console.log(`Updated status to ${finalStatus} for email ID ${email.id} and related warning log(s).`);
             } catch (dbError) {
-                // If DB update fails, log the error but potentially continue processing other emails
                 console.error(`Failed to update status for email ID ${email.id} in database:`, dbError);
-                // You might want to increment a separate 'dbErrorCount' here
-                // For now, we'll count it towards 'failed' as the overall process for this email didn't complete successfully.
-                if (finalStatus !== EmailStatus.FAILED) { // Avoid double-counting if send already failed
+                if (finalStatus !== EmailStatus.FAILED) {
                     failedCount++;
-                    if (finalStatus === EmailStatus.SENT) sentCount--; // Decrement sent count if DB update failed after successful send
+                    if (finalStatus === EmailStatus.SENT) sentCount--;
                 }
-                finalStatus = EmailStatus.FAILED; // Mark as failed due to DB error
+                finalStatus = EmailStatus.FAILED;
             }
         }
 
@@ -280,4 +303,112 @@ export async function processEmailQueue(): Promise<{ success: boolean; message: 
         console.error("Error during email queue processing:", error);
         return { success: false, message: `An unexpected error occurred: ${error instanceof Error ? error.message : String(error)}` };
     }
+}
+
+// --- Server Action: Get Queued Emails (for Admin Panel) ---
+export async function getEmailQueue(): Promise<{ success: boolean; message: string; emails?: any[] }> {
+  console.log("Attempting to fetch queued emails for admin panel...");
+
+  // --- Authorization Check --- 
+  const session = await getServerSession(authOptions);
+  if (!session || session.user?.role !== Role.PANEL) {
+      console.warn('Unauthorized attempt to fetch email queue. User:', session?.user?.email);
+      return { success: false, message: "Unauthorized: You do not have permission to view the email queue." };
+  }
+  console.log(`Authorized user ${session.user.email} is fetching the email queue.`);
+  // --- End Authorization Check ---
+
+  try {
+    const queuedEmails = await prisma.emailQueue.findMany({
+      where: {
+        status: EmailStatus.QUEUED,
+      },
+      orderBy: {
+        createdAt: 'asc', // Show oldest queued first
+      },
+      select: { // Select only needed fields for the UI
+        id: true,
+        recipientEmail: true,
+        recipientName: true,
+        subject: true,
+        template: true,
+        createdAt: true,
+        // Exclude bodyHtml for brevity in the list view
+      }
+    });
+
+    return { success: true, message: "Fetched queued emails.", emails: queuedEmails };
+
+  } catch (error) {
+    console.error("Error fetching email queue:", error);
+    return { success: false, message: `An unexpected error occurred: ${error instanceof Error ? error.message : String(error)}` };
+  }
+}
+
+// --- Server Action: Update Email Status (Approve/Cancel) ---
+export async function updateEmailStatus(
+  emailId: string, 
+  newStatus: EmailStatus
+): Promise<{ success: boolean; message: string }> {
+  console.log(`Attempting to update email ${emailId} to status ${newStatus}...`);
+
+  // --- Authorization Check --- 
+  const session = await getServerSession(authOptions);
+  if (!session || session.user?.role !== Role.PANEL) {
+      console.warn(`Unauthorized attempt to update email status for ${emailId}. User:`, session?.user?.email);
+      return { success: false, message: "Unauthorized: You do not have permission to update email status." };
+  }
+  console.log(`Authorized user ${session.user.email} is updating email ${emailId} to ${newStatus}.`);
+  // --- End Authorization Check ---
+
+  if (newStatus !== EmailStatus.APPROVED && newStatus !== EmailStatus.CANCELED) {
+     return { success: false, message: "Invalid target status specified." };
+  }
+
+  try {
+    // Find the email to get details needed for updating the WarningLog
+    const emailToUpdate = await prisma.emailQueue.findUnique({
+        where: { id: emailId },
+        select: { recipientEmail: true, template: true, status: true } // Get current status too
+    });
+
+    if (!emailToUpdate) {
+        return { success: false, message: `Email with ID ${emailId} not found.` };
+    }
+    
+    // Ensure we are only updating emails that are currently QUEUED
+    if (emailToUpdate.status !== EmailStatus.QUEUED) {
+        return { success: false, message: `Email ${emailId} is not in QUEUED status (current: ${emailToUpdate.status}). Cannot update.` };
+    }
+
+    // Use a transaction to update both EmailQueue and WarningLog
+    await prisma.$transaction([
+      prisma.emailQueue.update({
+        where: { id: emailId },
+        data: { status: newStatus },
+      }),
+      prisma.warningLog.updateMany({
+        where: {
+          recipientEmail: emailToUpdate.recipientEmail,
+          templateUsed: emailToUpdate.template,
+          status: EmailStatus.QUEUED, // Important: Only update logs linked to the QUEUED email
+        },
+        data: { status: newStatus }, // Update WarningLog status to match
+      }),
+    ]);
+
+    console.log(`Successfully updated email ${emailId} and related warning log(s) to ${newStatus}.`);
+    
+    // TODO: Consider adding an AdminLog entry here for audit trail
+    // Example: await createAdminLog(session.user.id, session.user.email, `updated_email_status`, { emailId, newStatus });
+
+    // Revalidate the path where the queue is displayed (assuming it's the home page for now)
+    revalidatePath('/'); 
+
+    return { success: true, message: `Email status updated to ${newStatus}.` };
+
+  } catch (error) {
+    console.error(`Error updating status for email ${emailId} to ${newStatus}:`, error);
+    return { success: false, message: `An unexpected error occurred: ${error instanceof Error ? error.message : String(error)}` };
+  }
 } 
