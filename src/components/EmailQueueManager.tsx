@@ -9,7 +9,7 @@ interface QueuedEmail {
   recipientEmail: string;
   recipientName: string | null;
   subject: string;
-  template: string;
+  template: string | null;
   createdAt: Date; 
 }
 
