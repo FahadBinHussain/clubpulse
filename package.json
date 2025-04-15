@@ -4,9 +4,10 @@
   "private": true,
   "scripts": {
     "predev": "node utils-patch.js",
-    "dev": "next dev",
+    "dev": "next dev --turbopack",
+    "dev:regular": "next dev",
     "prebuild": "node utils-patch.js",
-    "build": "prisma generate && next build",
+    "build": "next build",
     "start": "next start",
     "lint": "next lint",
     "prisma:generate": "dotenv -e .env.local -- npx prisma generate",

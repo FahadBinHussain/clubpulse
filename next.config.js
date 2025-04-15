@@ -13,8 +13,7 @@ const nextConfig = {
       },
     ],
   },
-  // Instead of transpiling, we'll mark these packages as external
-  // This resolves the conflict between transpilePackages and serverExternalPackages
+  // External packages that shouldn't be bundled
   serverExternalPackages: ['mjml', 'uglify-js', 'html-minifier'],
   
   // Disable server actions optimization that's causing path issues
@@ -23,6 +22,19 @@ const nextConfig = {
       bodySizeLimit: '2mb',
       allowedOrigins: ['localhost:3000']
     },
+  },
+  
+  // Enhanced Turbopack configuration for Windows compatibility
+  turbopack: {
+    // Simple path aliases for better Windows compatibility
+    resolveAlias: {
+      // Use simple package names without Windows paths
+      'uglify-js': 'uglify-js',
+      'mjml': 'mjml',
+      // Add virtual paths with simplified lookup
+      '\\[project\\]/node_modules/uglify-js': 'uglify-js',
+      '(action-browser)/node_modules/uglify-js': 'uglify-js',
+    }
   },
   
   webpack: (config, { isServer }) => {
