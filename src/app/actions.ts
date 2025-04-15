@@ -3,6 +3,8 @@
 import { prisma } from '@/lib/prisma';
 import { getSheetData } from '@/lib/googleSheets';
 import { EmailStatus } from '@prisma/client';
+import { sendEmail } from '@/lib/resend';
+import { CreateEmailResponse } from 'resend';
 
 // Define the expected structure for a row from the Google Sheet
 // Adjust indices based on your actual column order
@@ -26,19 +28,26 @@ interface ClubMemberData {
 
 // Define the global activity threshold
 const ACTIVITY_THRESHOLD = 5;
-// Define the range to read from the sheet (e.g., 'Sheet1!A2:F' to read columns A-F starting from row 2)
+// Define the range to read from the sheet via environment variable
+const sheetMemberDataRange = process.env.GOOGLE_SHEET_MEMBER_DATA_RANGE;
 // *** IMPORTANT: Update this range based on your actual sheet name and data columns ***
-const SHEET_RANGE = 'Sheet1!A2:F';
+// const SHEET_RANGE = 'Sheet1!A2:F'; // <-- Removed hardcoded value
 
 export async function checkMemberActivity(): Promise<{ success: boolean; message: string; checked?: number; flagged?: number; errors?: number }> {
   console.log("Starting member activity check...");
+
+  // Check if the range is configured
+  if (!sheetMemberDataRange) {
+    console.error("GOOGLE_SHEET_MEMBER_DATA_RANGE environment variable is not set.");
+    return { success: false, message: "Member data sheet range is not configured." };
+  }
 
   let checkedCount = 0;
   let flaggedCount = 0;
   let errorCount = 0;
 
   try {
-    const rawData = await getSheetData(SHEET_RANGE);
+    const rawData = await getSheetData(sheetMemberDataRange);
 
     if (rawData === null) {
       return { success: false, message: "Failed to fetch data from Google Sheet." };
@@ -171,4 +180,104 @@ export async function checkMemberActivity(): Promise<{ success: boolean; message
     console.error("Error during member activity check:", error);
     return { success: false, message: `An unexpected error occurred: ${error instanceof Error ? error.message : String(error)}` };
   }
+}
+
+// --- New Server Action: Process Email Queue ---
+export async function processEmailQueue(): Promise<{ success: boolean; message: string; processed?: number; sent?: number; failed?: number }> {
+    console.log("Starting email queue processing...");
+    let processedCount = 0;
+    let sentCount = 0;
+    let failedCount = 0;
+
+    try {
+        // 1. Fetch queued emails
+        const emailsToProcess = await prisma.emailQueue.findMany({
+            where: {
+                status: EmailStatus.QUEUED,
+            },
+        });
+
+        processedCount = emailsToProcess.length;
+
+        if (processedCount === 0) {
+            const message = "Email queue processing complete. No emails were pending.";
+            console.log(message);
+            return { success: true, message, processed: 0, sent: 0, failed: 0 };
+        }
+
+        console.log(`Found ${processedCount} emails in the queue to process.`);
+
+        // 2. Process each email
+        for (const email of emailsToProcess) {
+            let finalStatus: EmailStatus;
+            let sendResult: CreateEmailResponse | null = null; // Initialize sendResult
+            try {
+                console.log(`Attempting to send email ID ${email.id} to ${email.recipientEmail}`);
+                // 3. Attempt to send email (Corrected parameters and result handling)
+                sendResult = await sendEmail({
+                    to: email.recipientEmail,
+                    subject: email.subject,
+                    html: email.bodyHtml, // Pass content as 'html'
+                });
+
+                // Check Resend response structure: { data: { id: ... }, error: null } on success
+                // or { data: null, error: { message: ..., name: ... } } on failure
+                if (sendResult && !sendResult.error) { // Success if result exists and has no error
+                    finalStatus = EmailStatus.SENT;
+                    sentCount++;
+                    console.log(`Successfully sent email ID ${email.id} to ${email.recipientEmail}. Resend ID: ${sendResult.data?.id}`);
+                } else {
+                    finalStatus = EmailStatus.FAILED;
+                    failedCount++;
+                    // Log the specific Resend error if available
+                    const errorMessage = sendResult?.error?.message || 'Unknown Resend error';
+                    console.error(`Failed to send email ID ${email.id} to ${email.recipientEmail}: ${errorMessage}`);
+                }
+            } catch (sendError) {
+                // Catch errors during the await sendEmail call itself (e.g., network issues)
+                finalStatus = EmailStatus.FAILED;
+                failedCount++;
+                console.error(`Error processing email ID ${email.id} for ${email.recipientEmail} (exception during send):`, sendError);
+            }
+
+            // 4. Update status in DB (EmailQueue and WarningLog)
+            try {
+                await prisma.$transaction([
+                    prisma.emailQueue.update({
+                        where: { id: email.id },
+                        data: { status: finalStatus },
+                    }),
+                    // Find the related WarningLog entry (assuming one exists)
+                    // This might need refinement if the relationship isn't guaranteed or unique
+                    prisma.warningLog.updateMany({
+                         where: {
+                             recipientEmail: email.recipientEmail,
+                             templateUsed: email.template, // Match based on email and template
+                             status: EmailStatus.QUEUED // Only update logs that were queued
+                         },
+                         data: { status: finalStatus },
+                    }),
+                ]);
+                 console.log(`Updated status to ${finalStatus} for email ID ${email.id} and related warning log(s).`);
+            } catch (dbError) {
+                // If DB update fails, log the error but potentially continue processing other emails
+                console.error(`Failed to update status for email ID ${email.id} in database:`, dbError);
+                // You might want to increment a separate 'dbErrorCount' here
+                // For now, we'll count it towards 'failed' as the overall process for this email didn't complete successfully.
+                if (finalStatus !== EmailStatus.FAILED) { // Avoid double-counting if send already failed
+                    failedCount++;
+                    if (finalStatus === EmailStatus.SENT) sentCount--; // Decrement sent count if DB update failed after successful send
+                }
+                finalStatus = EmailStatus.FAILED; // Mark as failed due to DB error
+            }
+        }
+
+        const message = `Email queue processing finished. Processed: ${processedCount}, Sent: ${sentCount}, Failed: ${failedCount}.`;
+        console.log(message);
+        return { success: true, message, processed: processedCount, sent: sentCount, failed: failedCount };
+
+    } catch (error) {
+        console.error("Error during email queue processing:", error);
+        return { success: false, message: `An unexpected error occurred: ${error instanceof Error ? error.message : String(error)}` };
+    }
 } 
