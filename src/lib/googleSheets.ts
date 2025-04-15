@@ -42,7 +42,7 @@ async function getSheetsClient() {
  * @param range - The A1 notation of the range to retrieve (e.g., 'Sheet1!A1:E').
  * @returns A promise that resolves to the sheet data as an array of arrays, or null if an error occurs.
  */
-export async function getSheetData(range: string): Promise<any[][] | null> {
+export async function getSheetData(range: string): Promise<(string | number | boolean | null)[][] | null> {
   const spreadsheetId = process.env.GOOGLE_SHEET_ID;
   if (!spreadsheetId) {
     throw new Error('GOOGLE_SHEET_ID environment variable not set.');
