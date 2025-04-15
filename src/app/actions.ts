@@ -55,31 +55,62 @@ export async function checkMemberActivity(): Promise<{ success: boolean; message
 
     // --- Data Parsing and Validation ---
     rawData.forEach((row, index) => {
-      const email = row[COLUMN_INDICES.EMAIL];
-      const activityCountStr = row[COLUMN_INDICES.ACTIVITY_COUNT];
-      const name = row[COLUMN_INDICES.NAME] || ''; // Default to empty string if name is missing
+      const emailValue = row[COLUMN_INDICES.EMAIL];
+      const activityCountValue = row[COLUMN_INDICES.ACTIVITY_COUNT];
+      const nameValue = row[COLUMN_INDICES.NAME];
+      const roleValue = row[COLUMN_INDICES.ROLE];
+      const personalityTagValue = row[COLUMN_INDICES.PERSONALITY_TAG];
 
-      // Basic validation: Ensure email and activity count exist
-      if (!email || typeof email !== 'string' || activityCountStr === undefined || activityCountStr === null) {
-        console.warn(`Skipping row ${index + 2}: Missing email or activity count.`);
+      // Validate and process email
+      if (typeof emailValue !== 'string' || !emailValue) {
+        console.warn(`Skipping row ${index + 2}: Invalid or missing email.`);
+        errorCount++;
+        return; // Skip this row
+      }
+      const email = emailValue; // Guaranteed non-empty string
+
+      // Validate and process activity count
+      if (activityCountValue === undefined || activityCountValue === null) {
+         console.warn(`Skipping row ${index + 2}: Missing activity count.`);
+         errorCount++;
+         return; // Skip this row
+      }
+
+      let countStr: string;
+      if (typeof activityCountValue === 'number') {
+        countStr = String(activityCountValue);
+      } else if (typeof activityCountValue === 'string') {
+        countStr = activityCountValue;
+      } else {
+          console.warn(`Skipping row ${index + 2}: Invalid activity count type '${typeof activityCountValue}' value '${activityCountValue}'.`);
+          errorCount++;
+          return; // Skip this row
+      }
+
+      const activityCount = parseInt(countStr, 10);
+      if (isNaN(activityCount)) {
+        console.warn(`Skipping row ${index + 2}: Invalid activity count value (parsed from '${countStr}').`);
         errorCount++;
         return; // Skip this row
       }
 
-      const activityCount = parseInt(activityCountStr, 10);
-      if (isNaN(activityCount)) {
-        console.warn(`Skipping row ${index + 2}: Invalid activity count value '${activityCountStr}'.`);
-         errorCount++;
-        return; // Skip this row
-      }
+      // Process name: Ensure it's a string, default to empty string otherwise
+      const name = typeof nameValue === 'string' ? nameValue : '';
 
+      // Process role: Ensure it's a string, default to undefined otherwise
+      const role = typeof roleValue === 'string' ? roleValue : undefined;
+
+      // Process personalityTag: Ensure it's a string, default to undefined otherwise
+      const personalityTag = typeof personalityTagValue === 'string' ? personalityTagValue : undefined;
+
+      // Add validated data to the list
       membersToProcess.push({
         name: name,
         email: email,
         activityCount: activityCount,
-        role: row[COLUMN_INDICES.ROLE], // Optional
-        personalityTag: row[COLUMN_INDICES.PERSONALITY_TAG], // Optional
-        rowIndex: index + 2 // +2 because SHEET_RANGE starts at A2 and index is 0-based
+        role: role,
+        personalityTag: personalityTag,
+        rowIndex: index + 2
       });
     });
 
