@@ -275,6 +275,16 @@ export async function checkMemberActivity(): Promise<{ success: boolean; message
   }
 }
 
+// Define an interface for the selected email fields
+interface QueuedEmailSummary {
+  id: string;
+  recipientEmail: string;
+  recipientName: string | null; // Prisma schema likely has this as optional
+  subject: string;
+  template: string | null; // Prisma schema likely has this as optional
+  createdAt: Date;
+}
+
 // --- Server Action: Process Email Queue (Sends APPROVED emails) ---
 export async function processEmailQueue(): Promise<{ success: boolean; message: string; processed?: number; sent?: number; failed?: number }> {
     console.log("Starting approved email queue processing..."); // Updated log
@@ -371,7 +381,7 @@ export async function processEmailQueue(): Promise<{ success: boolean; message: 
 }
 
 // --- Server Action: Get Queued Emails (for Admin Panel) ---
-export async function getEmailQueue(): Promise<{ success: boolean; message: string; emails?: any[] }> {
+export async function getEmailQueue(): Promise<{ success: boolean; message: string; emails?: QueuedEmailSummary[] }> {
   console.log("Attempting to fetch queued emails for admin panel...");
 
   // --- Authorization Check --- 
