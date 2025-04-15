@@ -6,7 +6,7 @@ import { EmailStatus, Role } from '@prisma/client';
 import { sendEmail } from '@/lib/resend';
 import { CreateEmailResponse } from 'resend';
 import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { authOptions } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 // Import necessary modules for MJML rendering
 import mjml from 'mjml';
