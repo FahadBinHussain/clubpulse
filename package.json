@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "predev": "node utils-patch.js",
+    "dev": "next dev",
+    "prebuild": "node utils-patch.js",
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
