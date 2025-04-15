@@ -13,8 +13,8 @@ const memberSheetRange = process.env.GOOGLE_SHEET_MEMBER_DATA_RANGE;
 // Assuming email is the second column (index 1) in the member sheet based on COLUMN_INDICES in actions.ts
 const MEMBER_EMAIL_COLUMN_INDEX = 1; 
 
-// Export the authOptions constant
-export const authOptions: NextAuthOptions = {
+// Do not export the authOptions constant directly in route handlers
+const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma) as Adapter,
   providers: [
     GoogleProvider({
