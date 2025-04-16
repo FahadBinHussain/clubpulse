@@ -2,7 +2,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { getSheetData } from '@/lib/googleSheets';
-import { EmailStatus, Role } from '@prisma/client';
+import { EmailStatus, Role, RoleThreshold } from '@prisma/client';
 import { sendEmail } from '@/lib/resend';
 import { CreateEmailResponse } from 'resend';
 import { getServerSession } from 'next-auth/next';
@@ -37,8 +37,8 @@ interface SheetError {
     rowData: (string | number | boolean | null)[]; // Store the raw row data
 }
 
-// Define the global activity threshold
-const ACTIVITY_THRESHOLD = 5;
+// Define the default global activity threshold (can be overridden by role)
+const DEFAULT_ACTIVITY_THRESHOLD = 5;
 // Define the range to read from the sheet via environment variable
 const sheetMemberDataRange = process.env.GOOGLE_SHEET_MEMBER_DATA_RANGE;
 // *** IMPORTANT: Update this range based on your actual sheet name and data columns ***
@@ -109,9 +109,23 @@ export async function checkMemberActivity(): Promise<{
   let flaggedCount = 0;
   let belowThresholdCount = 0;
   let errorCount = 0;
-  const errorsList: SheetError[] = []; // <-- Initialize errors list
+  const errorsList: SheetError[] = [];
+  let roleThresholds: Map<string, number> = new Map(); // To store role-specific thresholds
 
   try {
+    // --- Fetch Role Thresholds --- 
+    try {
+      const thresholdsFromDb = await prisma.roleThreshold.findMany();
+      thresholdsFromDb.forEach(rt => {
+        roleThresholds.set(rt.roleName.toLowerCase(), rt.threshold);
+      });
+      console.log("Fetched role-specific thresholds:", Object.fromEntries(roleThresholds));
+    } catch (dbError) {
+       console.error("Error fetching role thresholds from DB:", dbError);
+       // Continue without role-specific thresholds, using only the default
+    }
+    // --- End Fetch Role Thresholds ---
+
     const rawData = await getSheetData(sheetMemberDataRange);
 
     if (rawData === null) {
@@ -188,12 +202,12 @@ export async function checkMemberActivity(): Promise<{
          // errorCount++; // Optionally count this as an error
       }
 
-      // Add validated data to the list (without personalityTag)
+      // Add validated data to the list
       membersToProcess.push({
         name: name,
         email: email,
         activityCount: activityCount,
-        role: role,
+        role: role, // Keep original role casing for display/template lookup if needed
         rowIndex: rowIndex
       });
     });
@@ -202,7 +216,15 @@ export async function checkMemberActivity(): Promise<{
 
     // --- Threshold Check and DB Operations ---
     for (const member of membersToProcess) {
-      if (member.activityCount < ACTIVITY_THRESHOLD) {
+      // --- Determine Threshold --- 
+      const memberRoleLower = (member.role || '').trim().toLowerCase();
+      const specificThreshold = roleThresholds.get(memberRoleLower);
+      const effectiveThreshold = specificThreshold !== undefined ? specificThreshold : DEFAULT_ACTIVITY_THRESHOLD;
+      // Log which threshold is being applied
+      // console.log(`Checking ${member.email} (Role: ${member.role}, Activity: ${member.activityCount}) against threshold: ${effectiveThreshold} ${specificThreshold !== undefined ? '(Role Specific)' : '(Default)'}`);
+      // --- End Determine Threshold --- 
+
+      if (member.activityCount < effectiveThreshold) { // <-- Use effectiveThreshold
         belowThresholdCount++;
 
         // ---> Check for existing QUEUED, APPROVED, CANCELED, or SENT email for this recipient <--- 
@@ -263,7 +285,7 @@ export async function checkMemberActivity(): Promise<{
             const personalizedMjml = mjmlTemplateContent
                 .replace(/{{name}}/g, member.name || 'Member')
                 .replace(/{{activityCount}}/g, member.activityCount.toString())
-                .replace(/{{threshold}}/g, ACTIVITY_THRESHOLD.toString());
+                .replace(/{{threshold}}/g, effectiveThreshold.toString());
 
             // Render MJML to HTML
             const { html, errors: mjmlErrors } = mjml(personalizedMjml, {});
@@ -299,7 +321,7 @@ export async function checkMemberActivity(): Promise<{
                 recipientName: member.name,
                 subject: emailSubject,
                 bodyHtml: renderedHtml, 
-                template: templateIdentifier, // <-- Use the specific identifier
+                template: templateIdentifier,
                 status: EmailStatus.QUEUED,
               },
             }),
@@ -308,13 +330,13 @@ export async function checkMemberActivity(): Promise<{
                 recipientEmail: member.email,
                 recipientName: member.name,
                 activityCount: member.activityCount,
-                threshold: ACTIVITY_THRESHOLD,
-                templateUsed: templateIdentifier, // <-- Use the specific identifier
+                threshold: effectiveThreshold, // <-- Store the ACTUAL threshold used
+                templateUsed: templateIdentifier,
                 status: EmailStatus.QUEUED, 
               },
             }),
           ]);
-           console.log(`Successfully queued email (${templateIdentifier}) and logged warning for ${member.email}`);
+           console.log(`Successfully queued email (${templateIdentifier}) and logged warning for ${member.email} using threshold ${effectiveThreshold}`);
         } catch (dbError) {
             const reason = `Failed to save to DB using template ${templateIdentifier}.`;
             console.error(`${reason} (Row ${member.rowIndex}):`, dbError);
@@ -492,11 +514,14 @@ export async function updateEmailStatus(
 
   // --- Authorization Check --- 
   const session = await getServerSession(authOptions);
-  if (!session || session.user?.role !== Role.PANEL) {
-      console.warn(`Unauthorized attempt to update email status for ${emailId}. User:`, session?.user?.email);
-      return { success: false, message: "Unauthorized: You do not have permission to update email status." };
+  // Ensure we have session, user, ID, and email for logging
+  if (!session?.user?.id || !session.user.email || session.user.role !== Role.PANEL) {
+      console.warn(`Unauthorized or incomplete session for attempt to update email status for ${emailId}. User:`, session?.user?.email);
+      return { success: false, message: "Unauthorized or missing user data for logging." };
   }
-  console.log(`Authorized user ${session.user.email} is updating email ${emailId} to ${newStatus}.`);
+  const adminUserId = session.user.id;
+  const adminUserEmail = session.user.email;
+  console.log(`Authorized user ${adminUserEmail} (ID: ${adminUserId}) is updating email ${emailId} to ${newStatus}.`);
   // --- End Authorization Check ---
 
   if (newStatus !== EmailStatus.APPROVED && newStatus !== EmailStatus.CANCELED) {
@@ -517,26 +542,42 @@ export async function updateEmailStatus(
         return { success: false, message: `Email ${emailId} is not in QUEUED status (current: ${emailToUpdate.status}). Cannot update.` };
     }
 
+    // Determine action string for logging
+    const actionString = newStatus === EmailStatus.APPROVED ? 'approved_email' : 'canceled_email';
+
     await prisma.$transaction([
+      // 1. Update EmailQueue status
       prisma.emailQueue.update({
         where: { id: emailId },
         data: { status: newStatus },
       }),
+      // 2. Update corresponding WarningLog status
       prisma.warningLog.updateMany({
         where: {
           recipientEmail: emailToUpdate.recipientEmail,
           templateUsed: emailToUpdate.template,
-          status: EmailStatus.QUEUED, 
+          status: EmailStatus.QUEUED, // Only update logs that were queued
         },
         data: { status: newStatus }, 
       }),
+      // 3. Create AdminLog entry
+      prisma.adminLog.create({
+          data: {
+              adminUserId: adminUserId,
+              adminUserEmail: adminUserEmail,
+              action: actionString,
+              details: { 
+                  emailId: emailId, 
+                  updatedStatus: newStatus,
+                  recipient: emailToUpdate.recipientEmail // Include recipient for context
+              } 
+          }
+      })
     ]);
 
-    console.log(`Successfully updated email ${emailId} and related warning log(s) to ${newStatus}.`);
+    console.log(`Successfully updated email ${emailId} and related warning log(s) to ${newStatus}, and created admin log.`);
     
-    // TODO: Consider adding an AdminLog entry here for audit trail
-
-    revalidatePath('/'); 
+    revalidatePath('/'); // Revalidate the cache for the home page
 
     return { success: true, message: `Email status updated to ${newStatus}.` };
 
@@ -544,4 +585,143 @@ export async function updateEmailStatus(
     console.error(`Error updating status for email ${emailId} to ${newStatus}:`, error);
     return { success: false, message: `An unexpected error occurred: ${error instanceof Error ? error.message : String(error)}` };
   }
+}
+
+// --- Server Action: Get Role Thresholds --- 
+export async function getRoleThresholds(): Promise<{
+  success: boolean;
+  message: string;
+  thresholds?: RoleThreshold[]; 
+}> {
+  console.log("Attempting to fetch role thresholds...");
+
+  // --- Authorization Check --- 
+  const session = await getServerSession(authOptions);
+  if (!session || session.user?.role !== Role.PANEL) {
+      console.warn("Unauthorized attempt to fetch role thresholds. User:", session?.user?.email);
+      return { success: false, message: "Unauthorized: You do not have permission to view thresholds." };
+  }
+  // --- End Authorization Check ---
+
+  try {
+    const thresholds = await prisma.roleThreshold.findMany({
+      orderBy: { roleName: 'asc' },
+    });
+    return { success: true, message: "Fetched thresholds.", thresholds };
+  } catch (error) {
+    console.error("Error fetching role thresholds:", error);
+    return { success: false, message: `An unexpected error occurred: ${error instanceof Error ? error.message : String(error)}` };
+  }
+}
+
+// --- Server Action: Upsert Role Threshold --- 
+export async function upsertRoleThreshold(
+  roleName: string, 
+  threshold: number
+): Promise<{ success: boolean; message: string; threshold?: RoleThreshold }> {
+  console.log(`Attempting to upsert threshold for role '${roleName}' to ${threshold}...`);
+
+  // --- Authorization Check --- 
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id || !session.user.email || session.user.role !== Role.PANEL) {
+      console.warn("Unauthorized attempt to upsert role threshold. User:", session?.user?.email);
+      return { success: false, message: "Unauthorized or missing user data for logging." };
+  }
+  const adminUserId = session.user.id;
+  const adminUserEmail = session.user.email;
+  // --- End Authorization Check ---
+
+  // --- Validation --- 
+  const normalizedRoleName = roleName.trim().toLowerCase();
+  if (!normalizedRoleName) {
+      return { success: false, message: "Role name cannot be empty." };
+  }
+  if (isNaN(threshold) || threshold < 0) {
+      return { success: false, message: "Threshold must be a non-negative number." };
+  }
+  // --- End Validation ---
+
+  try {
+    const upsertResult = await prisma.$transaction(async (tx) => {
+      // Find existing for logging details
+      const existing = await tx.roleThreshold.findUnique({
+        where: { roleName: normalizedRoleName },
+        select: { threshold: true }
+      });
+      
+      const newThreshold = await tx.roleThreshold.upsert({
+        where: { roleName: normalizedRoleName },
+        update: { threshold: threshold },
+        create: { roleName: normalizedRoleName, threshold: threshold },
+      });
+
+      // Create AdminLog entry
+      await tx.adminLog.create({
+          data: {
+              adminUserId: adminUserId,
+              adminUserEmail: adminUserEmail,
+              action: 'upsert_role_threshold',
+              details: { 
+                  roleName: normalizedRoleName, 
+                  newThreshold: threshold,
+                  previousThreshold: existing?.threshold // Log previous value if it existed
+              } 
+          }
+      });
+      
+      return newThreshold;
+    });
+
+    console.log(`Successfully upserted threshold for role ${normalizedRoleName}. New value: ${threshold}.`);
+    revalidatePath('/'); // Revalidate home page where thresholds might be displayed/used
+    return { success: true, message: `Threshold for role '${normalizedRoleName}' set to ${threshold}.`, threshold: upsertResult };
+
+  } catch (error) {
+    console.error(`Error upserting threshold for role ${normalizedRoleName}:`, error);
+    return { success: false, message: `An unexpected error occurred: ${error instanceof Error ? error.message : String(error)}` };
+  }
+}
+
+// --- Server Action: Get Unique Roles from Sheet --- 
+export async function getUniqueRolesFromSheet(): Promise<{ success: boolean; message: string; roles?: string[] }> {
+    console.log("Attempting to fetch unique roles from sheet...");
+
+    // --- Authorization Check --- 
+    const session = await getServerSession(authOptions);
+    if (!session || session.user?.role !== Role.PANEL) {
+        console.warn("Unauthorized attempt to fetch unique roles. User:", session?.user?.email);
+        return { success: false, message: "Unauthorized: You do not have permission." };
+    }
+    // --- End Authorization Check ---
+
+    // Check if the range is configured (it should be the same as checkMemberActivity)
+    if (!sheetMemberDataRange) {
+        console.error("GOOGLE_SHEET_MEMBER_DATA_RANGE environment variable is not set.");
+        return { success: false, message: "Member data sheet range is not configured." };
+    }
+
+    try {
+        const rawData = await getSheetData(sheetMemberDataRange);
+        if (rawData === null) {
+            return { success: false, message: "Failed to fetch data from Google Sheet." };
+        }
+
+        const uniqueRoles = new Set<string>();
+        rawData.forEach(row => {
+            const roleValue = row[COLUMN_INDICES.ROLE]; // Get role from Column D (index 3)
+            if (typeof roleValue === 'string' && roleValue.trim()) {
+                uniqueRoles.add(roleValue.trim()); // Keep original casing for display?
+                                                    // Or normalize here: uniqueRoles.add(roleValue.trim().toLowerCase());
+            }
+        });
+
+        const sortedRoles = Array.from(uniqueRoles).sort((a, b) => a.localeCompare(b));
+        
+        console.log("Found unique roles:", sortedRoles);
+        return { success: true, message: "Fetched unique roles.", roles: sortedRoles };
+
+    } catch (error) {
+        console.error("Error fetching unique roles from sheet:", error);
+        return { success: false, message: `An unexpected error occurred: ${error instanceof Error ? error.message : String(error)}` };
+    }
 } 

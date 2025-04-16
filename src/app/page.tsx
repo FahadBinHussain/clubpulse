@@ -2,14 +2,15 @@
 
 import { useSession, signIn, signOut } from "next-auth/react";
 import Image from "next/image";
-import EmailQueueManager from "@/components/EmailQueueManager"; // <-- Import the component
+import EmailQueueManager from "@/components/EmailQueueManager";
+import ThresholdManager from "@/components/ThresholdManager"; // <-- Import the new component
 
 export default function Home() {
   const { data: session, status } = useSession();
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-8 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 items-center text-center">
+      <main className="flex flex-col gap-8 items-center text-center w-full">
         <h1 className="text-3xl font-bold">ClubPulse</h1>
 
         {status === "loading" && <p>Loading session...</p>}
@@ -32,10 +33,13 @@ export default function Home() {
             
             {/* Conditionally render Admin section only for PANEL role */}
             {session.user?.role === 'PANEL' && (
-              <div className="mt-4 pt-4 border-t w-full flex flex-col items-center gap-4"> {/* Added gap-4 */}
+              <div className="mt-4 pt-4 border-t w-full flex flex-col items-center gap-6"> {/* Increased gap */} 
                  
-                 {/* Render Only the Email Queue Manager Component */}
+                 {/* Email Queue Manager */}
                  <EmailQueueManager /> 
+                 
+                 {/* Threshold Manager */}
+                 <ThresholdManager /> {/* <-- Add the new component */} 
                  
               </div>
             )}

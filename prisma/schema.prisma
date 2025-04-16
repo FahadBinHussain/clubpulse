@@ -134,3 +134,13 @@ model AdminLog {
 
   @@map("admin_logs")
 }
+
+// Model to store role-specific activity thresholds
+model RoleThreshold {
+  id        String @id @default(cuid())
+  roleName  String @unique // e.g., "co-director", "executive" (store normalized lowercase)
+  threshold Int
+  updatedAt DateTime @updatedAt
+
+  @@map("role_thresholds")
+}
