@@ -425,10 +425,16 @@ export async function processEmailQueue(): Promise<{ success: boolean; message: 
 
             // 4. Update status in DB (EmailQueue and WarningLog)
             try {
+                // Determine the message ID to store (null if not sent successfully)
+                const messageIdToStore = (finalStatus === EmailStatus.SENT && sendResult?.data?.id) ? sendResult.data.id : null;
+                
                 await prisma.$transaction([
                     prisma.emailQueue.update({
                         where: { id: email.id },
-                        data: { status: finalStatus }, // Update EmailQueue to SENT or FAILED
+                        data: { 
+                            status: finalStatus, 
+                            resendMessageId: messageIdToStore // Use the variable here
+                        }, 
                     }),
                     // Update related WarningLog entry
                     prisma.warningLog.updateMany({
@@ -443,7 +449,7 @@ export async function processEmailQueue(): Promise<{ success: boolean; message: 
                          },
                     }),
                 ]);
-                 console.log(`Updated status to ${finalStatus} for email ID ${email.id} and related warning log(s).`);
+                 console.log(`Updated status to ${finalStatus} for email ID ${email.id} and related warning log(s). Resend ID: ${messageIdToStore}`); // Improved log
             } catch (dbError) {
                 console.error(`Failed to update status for email ID ${email.id} in database:`, dbError);
                 if (finalStatus !== EmailStatus.FAILED) {

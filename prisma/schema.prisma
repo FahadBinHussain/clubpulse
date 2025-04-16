@@ -110,6 +110,8 @@ model EmailQueue {
   bodyHtml       String     @db.Text // Store the rendered MJML/HTML
   template       String     // Identifier for the template used (e.g., "low_activity_member")
   status         EmailStatus @default(QUEUED)
+  resendMessageId String?    // <-- Add Resend message ID
+  openedAt        DateTime?  // <-- Add timestamp for when email was opened
   scheduledAt    DateTime?  // Optional: If scheduling is implemented
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
@@ -119,6 +121,7 @@ model EmailQueue {
   // approvedById  String?
   // approvedBy    User?    @relation("ApprovedEmails", fields: [approvedById], references: [id])
 
+  @@index([resendMessageId]) // <-- Add index for faster webhook lookups
   @@map("email_queue")
 }
 

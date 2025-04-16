@@ -1,4 +1,7 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ClubPulse
+<img src="https://wakapi-qt1b.onrender.com/api/badge/fahad/interval:any/project:clubpulse" 
+     alt="Wakapi Time Tracking" 
+     title="Minimum amount of time spent on this project">
 
 ## Getting Started
 
