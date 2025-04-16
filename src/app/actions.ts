@@ -30,6 +30,13 @@ interface ClubMemberData {
   rowIndex: number; // Original row index for reference/debugging
 }
 
+// Define structure for sheet errors
+interface SheetError {
+    rowIndex: number;
+    reason: string;
+    rowData: (string | number | boolean | null)[]; // Store the raw row data
+}
+
 // Define the global activity threshold
 const ACTIVITY_THRESHOLD = 5;
 // Define the range to read from the sheet via environment variable
@@ -73,7 +80,14 @@ function getTemplateInfo(role?: string): { filename: string; identifier: string 
 }
 // --- End Helper Function ---
 
-export async function checkMemberActivity(): Promise<{ success: boolean; message: string; checked?: number; flagged?: number; errors?: number }> {
+export async function checkMemberActivity(): Promise<{
+    success: boolean;
+    message: string;
+    checked?: number;
+    flagged?: number;
+    errors?: number;
+    errorsList?: SheetError[]; // <-- Added errorsList
+}> {
   console.log("Starting member activity check...");
 
   // --- Authorization Check --- 
@@ -95,6 +109,7 @@ export async function checkMemberActivity(): Promise<{ success: boolean; message
   let flaggedCount = 0;
   let belowThresholdCount = 0;
   let errorCount = 0;
+  const errorsList: SheetError[] = []; // <-- Initialize errors list
 
   try {
     const rawData = await getSheetData(sheetMemberDataRange);
@@ -104,7 +119,7 @@ export async function checkMemberActivity(): Promise<{ success: boolean; message
     }
 
     if (rawData.length === 0) {
-        return { success: true, message: "No member data found in the specified range.", checked: 0, flagged: 0 };
+        return { success: true, message: "No member data found in the specified range.", checked: 0, flagged: 0, errors: 0, errorsList: [] };
     }
 
     console.log(`Fetched ${rawData.length} rows from sheet.`);
@@ -114,6 +129,7 @@ export async function checkMemberActivity(): Promise<{ success: boolean; message
 
     // --- Data Parsing and Validation ---
     rawData.forEach((row, index) => {
+      const rowIndex = index + 2; // Sheet rows are 1-based, data starts at row 2
       const emailValue = row[COLUMN_INDICES.EMAIL];
       const activityCountValue = row[COLUMN_INDICES.ACTIVITY_COUNT];
       const nameValue = row[COLUMN_INDICES.NAME];
@@ -121,15 +137,19 @@ export async function checkMemberActivity(): Promise<{ success: boolean; message
 
       // Validate email
       if (typeof emailValue !== 'string' || !emailValue) {
-        console.warn(`Skipping row ${index + 2}: Invalid or missing email.`);
+        const reason = "Invalid or missing email (Column B).";
+        console.warn(`Skipping row ${rowIndex}: ${reason}`);
+        errorsList.push({ rowIndex, reason, rowData: row }); // <-- Add error to list
         errorCount++;
-        return; 
+        return; // Skip this row
       }
-      const email = emailValue; 
+      const email = emailValue;
 
       // Validate activity count
       if (activityCountValue === undefined || activityCountValue === null) {
-         console.warn(`Skipping row ${index + 2}: Missing activity count.`);
+         const reason = "Missing activity count (Column C).";
+         console.warn(`Skipping row ${rowIndex}: ${reason}`);
+         errorsList.push({ rowIndex, reason, rowData: row }); // <-- Add error to list
          errorCount++;
          return; // Skip this row
       }
@@ -139,26 +159,33 @@ export async function checkMemberActivity(): Promise<{ success: boolean; message
       } else if (typeof activityCountValue === 'string') {
         countStr = activityCountValue;
       } else {
-          console.warn(`Skipping row ${index + 2}: Invalid activity count type '${typeof activityCountValue}' value '${activityCountValue}'.`);
+          const reason = `Invalid activity count type '${typeof activityCountValue}' value '${activityCountValue}' (Column C).`;
+          console.warn(`Skipping row ${rowIndex}: ${reason}`);
+          errorsList.push({ rowIndex, reason, rowData: row }); // <-- Add error to list
           errorCount++;
           return; // Skip this row
       }
       const activityCount = parseInt(countStr, 10);
       if (isNaN(activityCount)) {
-        console.warn(`Skipping row ${index + 2}: Invalid activity count value (parsed from '${countStr}').`);
+        const reason = `Invalid activity count value (parsed from '${countStr}') (Column C).`;
+        console.warn(`Skipping row ${rowIndex}: ${reason}`);
+        errorsList.push({ rowIndex, reason, rowData: row }); // <-- Add error to list
         errorCount++;
         return; // Skip this row
       }
-      
+
       // Process name
       const name = typeof nameValue === 'string' ? nameValue : '';
 
       // Process role: Now expected in column D (index 3)
-      const role = typeof roleValue === 'string' ? roleValue : undefined; 
+      const role = typeof roleValue === 'string' ? roleValue : undefined;
       // Log if role is missing, as it's now more critical
       if (!role) {
-         console.warn(`Row ${index + 2}: Missing role value (used for template selection).`);
-         // Decide if you want to error out or let getTemplateInfo handle the default
+         // This is a warning, not necessarily an error preventing processing, unless a role is strictly required later
+         console.warn(`Row ${rowIndex}: Missing role value (Column D) (used for template selection).`);
+         // Decide if you want to add this to errorsList or just log
+         // errorsList.push({ rowIndex, reason: "Missing role (Column D).", rowData: row });
+         // errorCount++; // Optionally count this as an error
       }
 
       // Add validated data to the list (without personalityTag)
@@ -167,11 +194,11 @@ export async function checkMemberActivity(): Promise<{ success: boolean; message
         email: email,
         activityCount: activityCount,
         role: role,
-        rowIndex: index + 2
+        rowIndex: rowIndex
       });
     });
 
-    console.log(`Parsed ${membersToProcess.length} valid members.`);
+    console.log(`Parsed ${membersToProcess.length} valid members out of ${checkedCount} rows checked. Found ${errorCount} errors.`);
 
     // --- Threshold Check and DB Operations ---
     for (const member of membersToProcess) {
@@ -215,11 +242,11 @@ export async function checkMemberActivity(): Promise<{ success: boolean; message
           mjmlTemplateContent = await fs.readFile(templatePath, 'utf-8');
           console.log(`Loaded template '${templateFilename}' for ${member.email} (Role: ${member.role})`);
         } catch (templateError) {
-          console.error(`Failed to load template '${templateFilename}' for ${member.email}:`, templateError);
+          const reason = `Failed to load template '${templateFilename}' for role '${member.role}'.`;
+          console.error(`${reason} (Row ${member.rowIndex}):`, templateError);
+          errorsList.push({ rowIndex: member.rowIndex, reason, rowData: [member.name, member.email, member.activityCount, member.role ?? null] });
           errorCount++;
-          // Try falling back to the default template if specific one fails?
-          // For now, just skip this member if their specific template is missing.
-          continue; 
+          continue;
         }
         // --- End Load --- 
 
@@ -242,16 +269,20 @@ export async function checkMemberActivity(): Promise<{ success: boolean; message
             const { html, errors: mjmlErrors } = mjml(personalizedMjml, {});
 
             if (mjmlErrors.length > 0) {
-                console.warn(`MJML rendering errors for ${member.email} using template ${templateIdentifier}:`, mjmlErrors);
+                const reason = `MJML rendering errors for template ${templateIdentifier}.`;
+                console.warn(`${reason} (Row ${member.rowIndex}):`, mjmlErrors);
+                errorsList.push({ rowIndex: member.rowIndex, reason: `${reason} First error: ${mjmlErrors[0].formattedMessage}`, rowData: [member.name, member.email, member.activityCount, member.role ?? null] });
                 errorCount++;
-                continue; 
+                continue;
             }
             renderedHtml = html;
 
         } catch (renderError) {
-            console.error(`Error rendering template '${templateIdentifier}' for ${member.email}:`, renderError);
+            const reason = `Error rendering template '${templateIdentifier}'.`;
+            console.error(`${reason} (Row ${member.rowIndex}):`, renderError);
+            errorsList.push({ rowIndex: member.rowIndex, reason, rowData: [member.name, member.email, member.activityCount, member.role ?? null] });
             errorCount++;
-            continue; 
+            continue;
         }
         
         if (!renderedHtml) { 
@@ -285,19 +316,24 @@ export async function checkMemberActivity(): Promise<{ success: boolean; message
           ]);
            console.log(`Successfully queued email (${templateIdentifier}) and logged warning for ${member.email}`);
         } catch (dbError) {
-            console.error(`Failed to process member ${member.email} (Row ${member.rowIndex}) using template ${templateIdentifier}:`, dbError);
-            errorCount++;
+            const reason = `Failed to save to DB using template ${templateIdentifier}.`;
+            console.error(`${reason} (Row ${member.rowIndex}):`, dbError);
+            // Decide if you want to add DB errors to the user-facing list
+            // errorsList.push({ rowIndex: member.rowIndex, reason, rowData: [...] }); 
+            errorCount++; // Still count as an error internally
         }
       }
     }
 
     const message = `Activity check complete. Checked: ${checkedCount}, Below Threshold: ${belowThresholdCount}, Newly Flagged: ${flaggedCount}, Errors: ${errorCount}.`;
     console.log(message);
-    return { success: true, message, checked: checkedCount, flagged: flaggedCount, errors: errorCount };
+    // Return the errorsList along with other counts
+    return { success: true, message, checked: checkedCount, flagged: flaggedCount, errors: errorCount, errorsList };
 
   } catch (error) {
     console.error("Error during member activity check:", error);
-    return { success: false, message: `An unexpected error occurred: ${error instanceof Error ? error.message : String(error)}` };
+    // Include the partially collected errors list even if a later exception occurs
+    return { success: false, message: `An unexpected error occurred: ${error instanceof Error ? error.message : String(error)}`, errors: errorCount, errorsList };
   }
 }
 
