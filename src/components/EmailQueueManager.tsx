@@ -26,6 +26,22 @@ const PUSHER_CHANNEL = 'admin-updates';
 const PUSHER_EMAIL_QUEUE_EVENT = 'email-queue-updated';
 // --- End Pusher Constants ---
 
+// --- Component Specific Types ---
+interface QueuedEmail {
+  id: string;
+  recipientEmail: string;
+  recipientName: string | null;
+  subject: string;
+  template: string | null;
+  createdAt: Date; 
+}
+
+// Type for Pusher event data
+type PusherEmailQueueEventData = 
+  | { triggeredBy: 'checkMemberActivity' }
+  | { updatedId: string; newStatus: EmailStatus };
+// --- End Types ---
+
 export default function EmailQueueManager() {
   const [queuedEmails, setQueuedEmails] = useState<QueuedEmail[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -111,7 +127,7 @@ export default function EmailQueueManager() {
 
     const channel = pusherClient.subscribe(PUSHER_CHANNEL);
 
-    channel.bind(PUSHER_EMAIL_QUEUE_EVENT, (data: any) => {
+    channel.bind(PUSHER_EMAIL_QUEUE_EVENT, (data: PusherEmailQueueEventData) => {
       console.log('Pusher event received:', PUSHER_EMAIL_QUEUE_EVENT, data);
       fetchQueue(false);
       setUpdateMessage('Email queue updated in background.');

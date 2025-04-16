@@ -103,8 +103,7 @@ export default function MemberStatusPortal() {
   // Fetch status automatically when the component mounts
   useEffect(() => {
     fetchStatus();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Run only once on mount
+  }, []);
 
   // Determine display name and email (use session data as fallback)
   const displayName = statusData?.name || session?.user?.name || 'Member';

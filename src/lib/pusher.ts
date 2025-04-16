@@ -32,7 +32,7 @@ export const pusherServer =
  * @param event - The event name (e.g., 'email-queue-updated')
  * @param data - The data payload to send with the event
  */
-export async function triggerPusherEvent(channel: string, event: string, data: any) {
+export async function triggerPusherEvent<T>(channel: string, event: string, data: T) {
   if (!pusherServer) {
     console.log('Pusher server not configured, skipping event trigger.');
     return; // Do nothing if Pusher isn't set up
