@@ -111,7 +111,6 @@ export async function checkMemberActivity(): Promise<{
   let errorCount = 0;
   const errorsList: SheetError[] = [];
   const roleThresholds: Map<string, number> = new Map();
-  let useRoleSpecificThresholds = false;
 
   try {
     // --- Fetch Role Thresholds from DB --- 
