@@ -1,6 +1,18 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+// --- Define types for Resend Webhook Payload ---
+interface ResendWebhookData {
+  email_id: string;
+  created_at: string; // Received as string
+}
+
+interface ResendWebhookPayload {
+  type: string;
+  data?: ResendWebhookData;
+}
+// --- End Type Definitions ---
+
 /**
  * Resend Webhook Handler
  * 
@@ -10,9 +22,10 @@ import { prisma } from '@/lib/prisma';
 export async function POST(request: Request) {
   console.log("Resend webhook received...");
 
-  let payload: any;
+  let payload: ResendWebhookPayload;
   try {
-    payload = await request.json();
+    // Use type assertion after parsing
+    payload = await request.json() as ResendWebhookPayload;
     // console.log("Webhook payload:", JSON.stringify(payload, null, 2)); // Log the full payload for debugging if needed
   } catch (error) {
     console.error("Error parsing webhook payload:", error);

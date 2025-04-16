@@ -110,21 +110,18 @@ export async function checkMemberActivity(): Promise<{
   let belowThresholdCount = 0;
   let errorCount = 0;
   const errorsList: SheetError[] = [];
-  let roleThresholds: Map<string, number> = new Map(); // To store role-specific thresholds
+  const roleThresholds: Map<string, number> = new Map();
+  let useRoleSpecificThresholds = false;
 
   try {
-    // --- Fetch Role Thresholds --- 
-    try {
-      const thresholdsFromDb = await prisma.roleThreshold.findMany();
-      thresholdsFromDb.forEach(rt => {
-        roleThresholds.set(rt.roleName.toLowerCase(), rt.threshold);
-      });
-      console.log("Fetched role-specific thresholds:", Object.fromEntries(roleThresholds));
-    } catch (dbError) {
-       console.error("Error fetching role thresholds from DB:", dbError);
-       // Continue without role-specific thresholds, using only the default
-    }
-    // --- End Fetch Role Thresholds ---
+    // --- Fetch Role Thresholds from DB --- 
+    console.log("Fetching role-specific thresholds from database...");
+    const thresholdsFromDb = await prisma.roleThreshold.findMany();
+    thresholdsFromDb.forEach(rt => {
+      roleThresholds.set(rt.roleName.toLowerCase(), rt.threshold);
+    });
+    console.log("Fetched role-specific thresholds:", Object.fromEntries(roleThresholds));
+    // --- End Fetch Thresholds ---
 
     const rawData = await getSheetData(sheetMemberDataRange);
 
