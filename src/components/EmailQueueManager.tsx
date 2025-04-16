@@ -139,28 +139,32 @@ export default function EmailQueueManager() {
         {error && <p className="text-red-600">Error fetching queue: {error}</p>}
         {updateMessage && <p className={`text-sm mb-2 ${updateMessage.includes("Failed") || updateMessage.includes("Error") ? 'text-red-600' : 'text-blue-600'}`}>{updateMessage}</p>}
 
+        {/* --- Responsive Email Queue Display --- */}
         {!isLoading && !error && queuedEmails.length === 0 && (
           <p>No emails currently pending approval.</p>
         )}
-
+        
+        {/* Table for Medium screens and up */} 
         {!isLoading && !error && queuedEmails.length > 0 && (
-          <div className="overflow-x-auto">
+          <div className="hidden md:block overflow-x-auto border border-gray-200 rounded-md">
             <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+              {/* Make thead sticky */} 
+              <thead className="bg-gray-50 sticky top-0 z-10"> 
                 <tr>
                   <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Recipient</th>
                   <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subject</th>
                   <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Queued At</th>
-                  <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  {/* Make Actions header sticky */} 
+                  <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky right-0 bg-gray-50">Actions</th> 
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {queuedEmails.map((email) => (
                   <tr key={email.id}>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700">{email.recipientName} ({email.recipientEmail})</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700">{email.recipientName || 'N/A'} ({email.recipientEmail})</td>
                     <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700">{email.subject}</td>
                     <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{email.createdAt.toLocaleString()}</td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm font-medium space-x-2">
+                    <td className="px-4 py-2 whitespace-nowrap text-sm font-medium space-x-2 sticky right-0 bg-white">
                       <button
                         onClick={() => handleUpdate(email.id, EmailStatus.APPROVED)}
                         disabled={isUpdating || isChecking}
@@ -175,7 +179,7 @@ export default function EmailQueueManager() {
                       >
                         Cancel
                       </button>
-                      {/* TODO: Add Preview button later */}
+                      {/* TODO: Add Preview button later */} 
                     </td>
                   </tr>
                 ))}
@@ -183,39 +187,96 @@ export default function EmailQueueManager() {
             </table>
           </div>
         )}
+
+        {/* Cards for Small screens */} 
+        {!isLoading && !error && queuedEmails.length > 0 && (
+          <div className="block md:hidden space-y-3">
+            {queuedEmails.map((email) => (
+              <div key={email.id} className="p-3 border rounded-lg shadow-sm bg-white text-sm">
+                <div className="mb-2">
+                  <span className="font-medium text-gray-700">Recipient:</span> {email.recipientName || 'N/A'} ({email.recipientEmail})
+                </div>
+                <div className="mb-2">
+                  <span className="font-medium text-gray-700">Subject:</span> {email.subject}
+                </div>
+                <div className="mb-3 text-xs text-gray-500">
+                  <span className="font-medium">Queued:</span> {email.createdAt.toLocaleString()}
+                </div>
+                <div className="flex justify-end space-x-3 border-t pt-2">
+                  <button
+                    onClick={() => handleUpdate(email.id, EmailStatus.APPROVED)}
+                    disabled={isUpdating || isChecking}
+                    className="text-green-600 hover:text-green-900 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    onClick={() => handleUpdate(email.id, EmailStatus.CANCELED)}
+                    disabled={isUpdating || isChecking}
+                    className="text-red-600 hover:text-red-900 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* --- Sheet Errors Section (New) --- */}
+      {/* --- Responsive Sheet Errors Section --- */}
       {sheetErrors.length > 0 && (
         <div className="mt-4 pt-4 border-t w-full">
           <h3 className="text-lg font-semibold text-red-700 mb-2">Sheet Validation Errors ({sheetErrors.length})</h3>
           <p className="text-sm text-gray-600 mb-2">The following rows in the Google Sheet could not be processed. Please correct them and run the check again.</p>
-          <div className="overflow-x-auto max-h-60 border rounded-md"> {/* Added max-height and scroll */}
+          
+          {/* Table for Medium screens and up */} 
+          <div className="hidden md:block overflow-x-auto max-h-60 border rounded-md">
             <table className="min-w-full divide-y divide-gray-200 text-sm">
-              <thead className="bg-red-50 sticky top-0"> {/* Sticky header */} 
+              {/* ... existing error table thead ... */} 
+               <thead className="bg-red-50 sticky top-0">
                 <tr>
                   <th scope="col" className="px-3 py-2 text-left font-medium text-red-800 uppercase tracking-wider">Row</th>
-                  <th scope="col" className="px-3 py-2 text-left font-medium text-red-800 uppercase tracking-wider">Name (from Sheet)</th> {/* Added Name column header */}
+                  <th scope="col" className="px-3 py-2 text-left font-medium text-red-800 uppercase tracking-wider">Name (from Sheet)</th>
                   <th scope="col" className="px-3 py-2 text-left font-medium text-red-800 uppercase tracking-wider">Reason</th>
                   <th scope="col" className="px-3 py-2 text-left font-medium text-red-800 uppercase tracking-wider">Raw Row Data</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
+                {/* ... existing error table tbody mapping ... */}
                 {sheetErrors.map((err) => {
-                  // Extract name from rowData (assuming index 0 is Name)
                   const nameFromSheet = typeof err.rowData?.[0] === 'string' ? err.rowData[0] : 'N/A';
-
                   return (
                     <tr key={err.rowIndex} className="hover:bg-red-50">
                       <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-900">{err.rowIndex}</td>
-                      <td className="px-3 py-2 whitespace-nowrap text-gray-700">{nameFromSheet}</td> {/* Added Name cell */}
+                      <td className="px-3 py-2 whitespace-nowrap text-gray-700">{nameFromSheet}</td>
                       <td className="px-3 py-2 whitespace-nowrap text-red-700">{err.reason}</td>
-                      <td className="px-3 py-2 whitespace-nowrap text-gray-500 font-mono">{JSON.stringify(err.rowData)}</td> {/* Display raw data */}
+                      <td className="px-3 py-2 whitespace-nowrap text-gray-500 font-mono">{JSON.stringify(err.rowData)}</td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
+          </div>
+          
+          {/* Cards for Small screens */} 
+          <div className="block md:hidden space-y-2 max-h-60 overflow-y-auto border rounded-md p-2 bg-red-50">
+            {sheetErrors.map((err) => {
+              const nameFromSheet = typeof err.rowData?.[0] === 'string' ? err.rowData[0] : 'N/A';
+              return (
+                <div key={err.rowIndex} className="p-2 border-b border-red-200 bg-white rounded shadow-sm text-xs">
+                  <div className="mb-1 font-medium">
+                    <span className="text-gray-700">Row:</span> <span className="text-gray-900">{err.rowIndex}</span> | <span className="text-gray-700">Name:</span> <span className="text-gray-900">{nameFromSheet}</span>
+                  </div>
+                  <div className="mb-1">
+                    <span className="font-medium text-red-700">Reason:</span> <span className="text-red-800">{err.reason}</span>
+                  </div>
+                  <div className="text-gray-500 font-mono break-all">
+                     <span className="font-medium text-gray-600">Data:</span> {JSON.stringify(err.rowData)}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

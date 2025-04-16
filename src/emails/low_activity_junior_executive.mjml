@@ -12,7 +12,9 @@
             <mj-text>Hi {{name}},</mj-text>
             <mj-text>This is a friendly check-in about your activity as a Junior Executive. Your count is {{activityCount}}, below the threshold of {{threshold}}. We encourage you to take this opportunity to learn and contribute more!</mj-text>
             <mj-text>Get involved:</mj-text>
-            <ul><li>Shadow an Executive or Senior Executive.</li><li>Volunteer for tasks at meetings or events.</li><li>Ask questions and learn about club operations.</li></ul>
+            <mj-text>
+              <ul><li>Shadow an Executive or Senior Executive.</li><li>Volunteer for tasks at meetings or events.</li><li>Ask questions and learn about club operations.</li></ul>
+            </mj-text>
             <mj-button href="https://example.com/learning-resources">Club Learning Resources</mj-button>
             <mj-text padding-top="15px">Keep up the great work,<br />The ClubPulse Team</mj-text>
           </mj-column>

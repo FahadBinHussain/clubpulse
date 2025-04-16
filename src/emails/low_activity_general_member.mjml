@@ -12,7 +12,9 @@
             <mj-text>Hi {{name}},</mj-text>
             <mj-text>Just reaching out regarding your club activity. Your current count is {{activityCount}}, which is below the active member threshold of {{threshold}}. Participation is key to a vibrant club!</mj-text>
             <mj-text>Simple ways to get involved:</mj-text>
-            <ul><li>Attend the next general meeting.</li><li>Participate in an upcoming event.</li><li>Join a discussion on our online forum.</li></ul>
+            <mj-text>
+              <ul><li>Attend the next general meeting.</li><li>Participate in an upcoming event.</li><li>Join a discussion on our online forum.</li></ul>
+            </mj-text>
             <mj-button href="https://example.com/club-events">View Upcoming Events</mj-button>
             <mj-text padding-top="15px">Best,<br />The ClubPulse Team</mj-text>
           </mj-column>

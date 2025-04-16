@@ -12,7 +12,9 @@
             <mj-text>Dear {{name}},</mj-text>
             <mj-text>As Co-Director, your engagement guides the club's direction. We've recorded your recent activity count as {{activityCount}}, which is below the expected threshold of {{threshold}}. Maintaining high visibility is important for leadership.</mj-text>
             <mj-text>Consider spearheading:</mj-text>
-            <ul><li>A strategic initiative discussion.</li><li>Cross-committee collaboration.</li><li>Mentorship for executive members.</li></ul>
+            <mj-text>
+              <ul><li>A strategic initiative discussion.</li><li>Cross-committee collaboration.</li><li>Mentorship for executive members.</li></ul>
+            </mj-text>
             <mj-button href="https://example.com/strategic-plan">Review Strategic Plan</mj-button>
             <mj-text padding-top="15px">Sincerely,<br />ClubPulse Governance</mj-text>
           </mj-column>

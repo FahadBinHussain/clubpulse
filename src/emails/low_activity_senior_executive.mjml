@@ -12,7 +12,9 @@
             <mj-text>Hi {{name}},</mj-text>
             <mj-text>This is a note regarding your activity level as Senior Executive. Your count is {{activityCount}}, below the threshold of {{threshold}}. Your leadership in initiatives is highly valued.</mj-text>
             <mj-text>Ways to re-engage:</mj-text>
-            <ul><li>Lead a project team meeting.</li><li>Report on initiative progress.</li><li>Mentor Junior Executives.</li></ul>
+            <mj-text>
+              <ul><li>Lead a project team meeting.</li><li>Report on initiative progress.</li><li>Mentor Junior Executives.</li></ul>
+            </mj-text>
             <mj-button href="https://example.com/project-updates">See Project Updates</mj-button>
             <mj-text padding-top="15px">Regards,<br />The ClubPulse Team</mj-text>
           </mj-column>

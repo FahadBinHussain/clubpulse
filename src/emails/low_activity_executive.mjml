@@ -12,7 +12,9 @@
             <mj-text>Hi {{name}},</mj-text>
             <mj-text>Checking in on your activity as an Executive. Your count is {{activityCount}}, below the threshold of {{threshold}}. Your contributions are important for club operations.</mj-text>
             <mj-text>Ways to contribute:</mj-text>
-            <ul><li>Take ownership of a specific task.</li><li>Assist a Senior Executive or Director.</li><li>Attend committee meetings regularly.</li></ul>
+            <mj-text>
+              <ul><li>Take ownership of a specific task.</li><li>Assist a Senior Executive or Director.</li><li>Attend committee meetings regularly.</li></ul>
+            </mj-text>
             <mj-button href="https://example.com/committee-notes">Access Committee Notes</mj-button>
             <mj-text padding-top="15px">Best,<br />The ClubPulse Team</mj-text>
           </mj-column>
