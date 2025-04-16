@@ -8,6 +8,7 @@ import { CreateEmailResponse } from 'resend';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
+import { triggerPusherEvent } from '@/lib/pusher';
 // Import necessary modules for MJML rendering
 import mjml from 'mjml';
 import fs from 'fs/promises';
@@ -79,6 +80,12 @@ function getTemplateInfo(role?: string): { filename: string; identifier: string 
   }
 }
 // --- End Helper Function ---
+
+// --- Constants for Pusher --- 
+const ADMIN_CHANNEL = 'admin-updates';
+const EMAIL_QUEUE_EVENT = 'email-queue-updated';
+const THRESHOLDS_EVENT = 'thresholds-updated';
+// --- End Constants --- 
 
 export async function checkMemberActivity(): Promise<{
     success: boolean;
@@ -210,6 +217,8 @@ export async function checkMemberActivity(): Promise<{
 
     console.log(`Parsed ${membersToProcess.length} valid members out of ${checkedCount} rows checked. Found ${errorCount} errors.`);
 
+    let successfullyQueuedCount = 0; // Track if any emails were actually queued
+
     // --- Threshold Check and DB Operations ---
     for (const member of membersToProcess) {
       // --- Determine Threshold --- 
@@ -332,7 +341,8 @@ export async function checkMemberActivity(): Promise<{
               },
             }),
           ]);
-           console.log(`Successfully queued email (${templateIdentifier}) and logged warning for ${member.email} using threshold ${effectiveThreshold}`);
+          successfullyQueuedCount++; // Increment counter on successful DB operation
+          console.log(`Successfully queued email (${templateIdentifier}) and logged warning for ${member.email} using threshold ${effectiveThreshold}`);
         } catch (dbError) {
             const reason = `Failed to save to DB using template ${templateIdentifier}.`;
             console.error(`${reason} (Row ${member.rowIndex}):`, dbError);
@@ -342,6 +352,13 @@ export async function checkMemberActivity(): Promise<{
         }
       }
     }
+
+    // --- Trigger Pusher Event if emails were queued --- 
+    if (successfullyQueuedCount > 0) {
+        // Trigger event without sending sensitive data, client will refetch
+        await triggerPusherEvent(ADMIN_CHANNEL, EMAIL_QUEUE_EVENT, { triggeredBy: 'checkMemberActivity' });
+    }
+    // --- End Trigger --- 
 
     const message = `Activity check complete. Checked: ${checkedCount}, Below Threshold: ${belowThresholdCount}, Newly Flagged: ${flaggedCount}, Errors: ${errorCount}.`;
     console.log(message);
@@ -581,6 +598,10 @@ export async function updateEmailStatus(
     
     revalidatePath('/'); // Revalidate the cache for the home page
 
+    // --- Trigger Pusher Event --- 
+    await triggerPusherEvent(ADMIN_CHANNEL, EMAIL_QUEUE_EVENT, { updatedId: emailId, newStatus: newStatus });
+    // --- End Trigger --- 
+
     return { success: true, message: `Email status updated to ${newStatus}.` };
 
   } catch (error) {
@@ -718,6 +739,11 @@ export async function upsertRoleThreshold(
 
     console.log(`Successfully upserted threshold for role ${normalizedRoleName}. New value: ${threshold}.`);
     revalidatePath('/'); // Revalidate home page where thresholds might be displayed/used
+    
+    // --- Trigger Pusher Event --- 
+    await triggerPusherEvent(ADMIN_CHANNEL, THRESHOLDS_EVENT, { roleName: normalizedRoleName, newThreshold: threshold });
+    // --- End Trigger --- 
+    
     return { success: true, message: `Threshold for role '${normalizedRoleName}' set to ${threshold}.`, threshold: upsertResult };
 
   } catch (error) {
@@ -768,4 +794,127 @@ export async function getUniqueRolesFromSheet(): Promise<{ success: boolean; mes
         console.error("Error fetching unique roles from sheet:", error);
         return { success: false, message: `An unexpected error occurred: ${error instanceof Error ? error.message : String(error)}` };
     }
-} 
+}
+
+// --- Server Action: Get Member Status (for Self-Service Portal) ---
+interface MemberStatus { 
+  name?: string | null;
+  email?: string | null;
+  activityCount?: number;
+  role?: string | null; // Role found in sheet
+  effectiveThreshold?: number;
+  statusMessage: string; // e.g., "Active", "Below Threshold", "Not Found"
+  // Add tips later if needed
+}
+
+export async function getMemberStatus(): Promise<{ 
+    success: boolean; 
+    message: string; 
+    status?: MemberStatus 
+}> {
+  console.log("Attempting to fetch member status for self-service portal...");
+
+  // --- Authorization Check --- 
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) {
+      console.warn("Unauthorized or incomplete session for getMemberStatus.");
+      return { success: false, message: "Authentication required." };
+  }
+  const userEmail = session.user.email;
+  console.log(`Authorized user ${userEmail} is fetching their status.`);
+  // --- End Authorization Check --- 
+
+  // Check if the range is configured
+  if (!sheetMemberDataRange) {
+    console.error("GOOGLE_SHEET_MEMBER_DATA_RANGE environment variable is not set.");
+    return { success: false, message: "Configuration error: Member data sheet range is not set." };
+  }
+
+  try {
+    // --- Fetch Role Thresholds from DB --- 
+    const thresholdsFromDb = await prisma.roleThreshold.findMany();
+    const roleThresholds: Map<string, number> = new Map();
+    thresholdsFromDb.forEach(rt => {
+      roleThresholds.set(rt.roleName.toLowerCase(), rt.threshold);
+    });
+    // --- End Fetch Thresholds ---
+
+    // --- Fetch Sheet Data --- 
+    const rawData = await getSheetData(sheetMemberDataRange);
+    if (rawData === null) {
+      return { success: false, message: "Failed to fetch data from Google Sheet." };
+    }
+    // --- End Fetch Sheet Data ---
+
+    // --- Find User in Sheet --- 
+    let foundMember: ClubMemberData | null = null;
+    for (const row of rawData) {
+        const sheetEmail = row[COLUMN_INDICES.EMAIL];
+        if (typeof sheetEmail === 'string' && sheetEmail.trim().toLowerCase() === userEmail.toLowerCase()) {
+            const activityCountValue = row[COLUMN_INDICES.ACTIVITY_COUNT];
+            const nameValue = row[COLUMN_INDICES.NAME];
+            const roleValue = row[COLUMN_INDICES.ROLE];
+            
+            let activityCount = 0; // Default if invalid
+            if (typeof activityCountValue === 'number') {
+                activityCount = activityCountValue;
+            } else if (typeof activityCountValue === 'string') {
+                const parsed = parseInt(activityCountValue, 10);
+                if (!isNaN(parsed)) {
+                    activityCount = parsed;
+                }
+            } // Else activityCount remains 0
+
+            foundMember = {
+                name: typeof nameValue === 'string' ? nameValue : '',
+                email: sheetEmail.trim(),
+                activityCount: activityCount,
+                role: typeof roleValue === 'string' ? roleValue.trim() : undefined,
+                rowIndex: -1 // Not relevant here
+            };
+            break; // Stop searching
+        }
+    }
+    // --- End Find User --- 
+
+    if (!foundMember) {
+      console.log(`User ${userEmail} not found in the member sheet.`);
+      return { 
+        success: true, // Request successful, but user not found in this sheet
+        message: "User data not found in the activity sheet.",
+        status: { 
+            name: session.user.name, // Use name from session as fallback
+            email: userEmail,
+            statusMessage: "Not found in activity sheet"
+        }
+      };
+    }
+
+    // --- Determine Threshold & Status Message --- 
+    const memberRoleLower = (foundMember.role || '').trim().toLowerCase();
+    const specificThreshold = roleThresholds.get(memberRoleLower);
+    const effectiveThreshold = specificThreshold !== undefined ? specificThreshold : DEFAULT_ACTIVITY_THRESHOLD;
+    
+    const statusMessage = foundMember.activityCount >= effectiveThreshold ? "Active" : "Below Threshold";
+    // --- End Threshold & Status --- 
+
+    const memberStatus: MemberStatus = {
+        name: foundMember.name,
+        email: foundMember.email,
+        activityCount: foundMember.activityCount,
+        role: foundMember.role, // Role from sheet
+        effectiveThreshold: effectiveThreshold,
+        statusMessage: statusMessage
+    };
+    
+    console.log(`Status for ${userEmail}: Count=${memberStatus.activityCount}, Role='${memberStatus.role}', Threshold=${memberStatus.effectiveThreshold}, Status='${memberStatus.statusMessage}'`);
+
+    return { success: true, message: "Fetched member status successfully.", status: memberStatus };
+
+  } catch (error) {
+    console.error(`Error fetching member status for ${userEmail}:`, error);
+    return { success: false, message: `An unexpected error occurred: ${error instanceof Error ? error.message : String(error)}` };
+  }
+}
+
+// --- End Member Status Action --- 

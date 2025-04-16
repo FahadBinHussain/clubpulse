@@ -4,6 +4,7 @@ import { useSession, signIn, signOut } from "next-auth/react";
 import Image from "next/image";
 import EmailQueueManager from "@/components/EmailQueueManager";
 import ThresholdManager from "@/components/ThresholdManager"; // <-- Import the new component
+import MemberStatusPortal from "@/components/MemberStatusPortal"; // <-- Import the new portal component
 
 export default function Home() {
   const { data: session, status } = useSession();
@@ -17,33 +18,41 @@ export default function Home() {
 
         {status === "authenticated" && session && (
           <div className="flex flex-col items-center gap-4 p-4 border rounded-lg shadow-md w-full max-w-4xl">
-            <p>Welcome back!</p>
-            {session.user?.image && (
-              <Image
-                src={session.user.image}
-                alt="User profile picture"
-                width={64}
-                height={64}
-                className="rounded-full"
-              />
-            )}
-            <p className="font-semibold">{session.user?.name}</p>
-            <p className="text-sm text-gray-600">{session.user?.email}</p>
-            <p className="text-xs text-gray-500">(Role: {session.user?.role})</p>
             
-            {/* Conditionally render Admin section only for PANEL role */}
-            {session.user?.role === 'PANEL' && (
-              <div className="mt-4 pt-4 border-t w-full flex flex-col items-center gap-6"> {/* Increased gap */} 
+            {/* --- Conditional Rendering based on Role --- */}
+            {session.user?.role === 'PANEL' ? (
+              // --- PANEL VIEW --- 
+              <div className="w-full flex flex-col items-center gap-6"> 
+                 {/* Display Admin User Info */}
+                 <div className="flex flex-col items-center gap-2 text-center border-b pb-4 w-full max-w-xs">
+                    <p>Welcome back!</p>
+                    {session.user?.image && (
+                      <Image
+                        src={session.user.image}
+                        alt="User profile picture"
+                        width={64}
+                        height={64}
+                        className="rounded-full"
+                      />
+                    )}
+                    <p className="font-semibold">{session.user?.name}</p>
+                    <p className="text-sm text-gray-600">{session.user?.email}</p>
+                    <p className="text-xs text-gray-500">(Role: {session.user?.role})</p>
+                 </div>
                  
-                 {/* Email Queue Manager */}
+                 {/* Email Queue Manager */} 
                  <EmailQueueManager /> 
                  
-                 {/* Threshold Manager */}
-                 <ThresholdManager /> {/* <-- Add the new component */} 
-                 
+                 {/* Threshold Manager */} 
+                 <ThresholdManager /> 
               </div>
+            ) : (
+              // --- MEMBER/GUEST VIEW --- 
+              <MemberStatusPortal /> // <-- Render the new portal component
             )}
+            {/* --- End Conditional Rendering --- */}
             
+            {/* Sign Out Button (Common to both roles) */} 
             <button
               onClick={() => signOut()}
               className="mt-4 px-4 py-2 font-medium text-white bg-red-600 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"

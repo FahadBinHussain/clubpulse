@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useTransition } from 'react';
+import { useState, useEffect, useTransition, useCallback } from 'react';
+import Pusher from 'pusher-js';
 import { getEmailQueue, updateEmailStatus, checkMemberActivity, getEmailBodyHtml } from '@/app/actions';
 import { EmailStatus } from '@prisma/client';
 
@@ -20,6 +21,11 @@ interface SheetError {
     rowData: (string | number | boolean | null)[]; // Store the raw row data
 }
 
+// --- Pusher Constants (Match actions.ts) ---
+const PUSHER_CHANNEL = 'admin-updates';
+const PUSHER_EMAIL_QUEUE_EVENT = 'email-queue-updated';
+// --- End Pusher Constants ---
+
 export default function EmailQueueManager() {
   const [queuedEmails, setQueuedEmails] = useState<QueuedEmail[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -28,7 +34,7 @@ export default function EmailQueueManager() {
   const [updateMessage, setUpdateMessage] = useState<string | null>(null);
   const [isChecking, startCheckTransition] = useTransition();
   const [checkMessage, setCheckMessage] = useState<string | null>(null);
-  const [sheetErrors, setSheetErrors] = useState<SheetError[]>([]); // <-- State for sheet errors
+  const [sheetErrors, setSheetErrors] = useState<SheetError[]>([]);
 
   // --- State for Preview Modal ---
   const [isPreviewing, startPreviewTransition] = useTransition();
@@ -38,36 +44,12 @@ export default function EmailQueueManager() {
   const [currentPreviewEmailId, setCurrentPreviewEmailId] = useState<string | null>(null);
   // --- End Preview State ---
 
-  const handleCheckAndRefresh = () => {
-    startCheckTransition(async () => {
-      setIsLoading(true);
+  // --- Extracted Data Fetching Logic ---
+  const fetchQueue = useCallback(async (setLoading = true) => {
+      if (setLoading) setIsLoading(true);
       setError(null);
-      setUpdateMessage(null);
-      setCheckMessage("Checking sheet & queuing new warnings...");
-      setSheetErrors([]); // Clear previous errors
-
-      try {
-        const checkResult = await checkMemberActivity();
-        setCheckMessage(checkResult.message); // Show the summary message
-        if (checkResult.errorsList && checkResult.errorsList.length > 0) {
-            setSheetErrors(checkResult.errorsList); // Store the detailed errors
-            console.log("Sheet validation errors found:", checkResult.errorsList);
-        }
-        if (!checkResult.success && (!checkResult.errorsList || checkResult.errorsList.length === 0)) {
-            // Log if the overall check failed but no specific row errors were returned
-            console.warn("checkMemberActivity failed but no specific errors list returned:", checkResult.message);
-        }
-        // Always try to fetch the queue even if check had errors/warnings
-      } catch (err) {
-        setCheckMessage("An error occurred during sheet check.");
-        console.error("Error calling checkMemberActivity:", err);
-        // Optionally set sheetErrors here too if the whole action failed
-      }
-
-      // Fetch Email Queue (moved outside the check try-catch)
       try {
         const result = await getEmailQueue();
-        console.log("Result received in EmailQueueManager:", JSON.stringify(result, null, 2)); // Keep this log
         if (result.success && result.emails) {
           const emailsWithDate = result.emails.map(email => ({...email, createdAt: new Date(email.createdAt) }));
           setQueuedEmails(emailsWithDate);
@@ -80,35 +62,69 @@ export default function EmailQueueManager() {
         console.error(err);
         setQueuedEmails([]);
       } finally {
-         setIsLoading(false); // Set loading false only after both check and fetch attempt
+         if (setLoading) setIsLoading(false);
       }
+  }, []);
+  // --- End Data Fetching Logic ---
 
+  const handleCheckAndRefresh = () => {
+    startCheckTransition(async () => {
+      setError(null);
+      setUpdateMessage(null);
+      setCheckMessage("Checking sheet & queuing new warnings...");
+      setSheetErrors([]);
+
+      try {
+        const checkResult = await checkMemberActivity();
+        setCheckMessage(checkResult.message);
+        if (checkResult.errorsList && checkResult.errorsList.length > 0) {
+            setSheetErrors(checkResult.errorsList);
+            console.log("Sheet validation errors found:", checkResult.errorsList);
+        }
+        if (!checkResult.success && (!checkResult.errorsList || checkResult.errorsList.length === 0)) {
+            console.warn("checkMemberActivity failed but no specific errors list returned:", checkResult.message);
+        }
+      } catch (err) {
+        setCheckMessage("An error occurred during sheet check.");
+        console.error("Error calling checkMemberActivity:", err);
+      } finally {
+          await fetchQueue();
+      }
     });
   };
 
+  // --- Initial Fetch & Pusher Setup ---
   useEffect(() => {
-    const initialFetch = async () => {
-        setIsLoading(true);
-        setError(null);
-        try {
-            const result = await getEmailQueue();
-            if (result.success && result.emails) {
-                const emailsWithDate = result.emails.map(email => ({...
-                  email,
-                  createdAt: new Date(email.createdAt)
-                }));
-                setQueuedEmails(emailsWithDate);
-            } else {
-                setError(result.message || "Failed to fetch email queue.");
-            }
-        } catch (err) {
-            setError("An unexpected error occurred while fetching the queue.");
-            console.error(err);
-        }
-        setIsLoading(false);
+    fetchQueue();
+
+    const pusherKey = process.env.NEXT_PUBLIC_PUSHER_KEY;
+    const pusherCluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
+
+    if (!pusherKey || !pusherCluster) {
+        console.warn("Pusher client keys not found in environment variables. Realtime updates disabled.");
+        return;
+    }
+
+    const pusherClient = new Pusher(pusherKey, {
+      cluster: pusherCluster,
+    });
+
+    const channel = pusherClient.subscribe(PUSHER_CHANNEL);
+
+    channel.bind(PUSHER_EMAIL_QUEUE_EVENT, (data: any) => {
+      console.log('Pusher event received:', PUSHER_EMAIL_QUEUE_EVENT, data);
+      fetchQueue(false);
+      setUpdateMessage('Email queue updated in background.');
+      setTimeout(() => setUpdateMessage(null), 3000);
+    });
+
+    return () => {
+      console.log("Unbinding from Pusher event and unsubscribing from channel.");
+      channel.unbind(PUSHER_EMAIL_QUEUE_EVENT);
+      pusherClient.unsubscribe(PUSHER_CHANNEL);
     };
-    initialFetch();
-  }, []);
+  }, [fetchQueue]);
+  // --- End Initial Fetch & Pusher Setup ---
 
   const handleUpdate = (emailId: string, status: EmailStatus) => {
     startUpdateTransition(async () => {
@@ -116,9 +132,6 @@ export default function EmailQueueManager() {
         try {
             const result = await updateEmailStatus(emailId, status);
             setUpdateMessage(result.message); 
-            if(result.success) {
-                setQueuedEmails(prevEmails => prevEmails.filter(email => email.id !== emailId));
-            } 
         } catch (err) {
             setUpdateMessage("An unexpected error occurred during update.");
             console.error(err);
@@ -132,7 +145,7 @@ export default function EmailQueueManager() {
       setPreviewError(null);
       setPreviewHtml(null);
       setIsModalOpen(true);
-      setCurrentPreviewEmailId(emailId); // Keep track of which email is being previewed
+      setCurrentPreviewEmailId(emailId);
       
       try {
         const result = await getEmailBodyHtml(emailId);
@@ -157,7 +170,7 @@ export default function EmailQueueManager() {
   // --- End Preview Handling ---
 
   return (
-    <div className="mt-6 p-4 border rounded-lg shadow-md w-full max-w-4xl flex flex-col gap-4 relative"> {/* Added relative for modal positioning */} 
+    <div className="mt-6 p-4 border rounded-lg shadow-md w-full max-w-4xl flex flex-col gap-4 relative">
       {/* --- Email Queue Section --- */}
       <div className="w-full">
         <div className="flex justify-between items-center mb-2">
@@ -167,7 +180,7 @@ export default function EmailQueueManager() {
             disabled={isLoading || isUpdating || isChecking}
             className="px-3 py-1 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-300 disabled:opacity-50"
           >
-            {isChecking ? "Checking..." : "Check Sheet & Refresh Queue"}
+            {isChecking ? "Checking Sheet..." : "Check Sheet & Queue"}
           </button>
         </div>
 
@@ -204,7 +217,7 @@ export default function EmailQueueManager() {
                     <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{email.createdAt.toLocaleString()}</td>
                     <td className="px-4 py-2 whitespace-nowrap text-sm font-medium space-x-2 sticky right-0 bg-white">
                        <button
-                        onClick={() => handlePreview(email.id)} // <-- Add Preview Button
+                        onClick={() => handlePreview(email.id)}
                         disabled={isUpdating || isChecking || isPreviewing}
                         className="text-blue-600 hover:text-blue-900 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
@@ -248,7 +261,7 @@ export default function EmailQueueManager() {
                 </div>
                 <div className="flex justify-end space-x-3 border-t pt-2">
                    <button
-                    onClick={() => handlePreview(email.id)} // <-- Add Preview Button
+                    onClick={() => handlePreview(email.id)}
                     disabled={isUpdating || isChecking || isPreviewing}
                     className="text-blue-600 hover:text-blue-900 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
                   >
@@ -294,7 +307,6 @@ export default function EmailQueueManager() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {/* ... existing error table tbody mapping ... */}
                 {sheetErrors.map((err) => {
                   const nameFromSheet = typeof err.rowData?.[0] === 'string' ? err.rowData[0] : 'N/A';
                   return (
@@ -336,11 +348,11 @@ export default function EmailQueueManager() {
       {isModalOpen && (
         <div 
           className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm" 
-          onClick={closeModal} // Close if clicking outside the modal content
+          onClick={closeModal}
         >
           <div 
             className="bg-white rounded-lg shadow-xl p-6 w-full max-w-3xl max-h-[80vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside modal content
+            onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-between items-center border-b pb-3 mb-4">
               <h3 className="text-xl font-semibold">Email Preview</h3>
@@ -349,7 +361,7 @@ export default function EmailQueueManager() {
                 className="text-gray-500 hover:text-gray-800 text-2xl leading-none"
                 aria-label="Close modal"
               >
-                &times; {/* Unicode multiplication sign for 'X' */} 
+                &times;
               </button>
             </div>
             
@@ -358,13 +370,13 @@ export default function EmailQueueManager() {
             
             {previewHtml && (
               <div 
-                className="prose max-w-none" // Use prose for basic styling, max-w-none to allow full width
+                className="prose max-w-none"
                 dangerouslySetInnerHTML={{ __html: previewHtml }} 
               />
             )}
             
             {!isPreviewing && !previewHtml && !previewError && (
-                <p>No content to display.</p> // Should not happen often
+                <p>No content to display.</p>
             )}
 
             <div className="border-t pt-3 mt-4 flex justify-end">
