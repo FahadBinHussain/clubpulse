@@ -1,0 +1,22 @@
+    <mjml>
+      <mj-head>
+        <mj-title>Junior Executive Engagement</mj-title>
+        <mj-preview>Encouragement to get more involved as a Junior Executive.</mj-preview>
+        <mj-attributes><mj-all font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" /><mj-text font-size="16px" line-height="24px" color="#333" /><mj-button background-color="#5BC0DE" color="white" font-size="16px" border-radius="4px" /></mj-attributes>
+      </mj-head>
+      <mj-body background-color="#f8f9fa">
+        <mj-section padding="20px 0"><mj-column><mj-image width="100px" src="https://placehold.co/100x50/5BC0DE/white?text=ClubPulse" alt="ClubPulse Logo"></mj-image><mj-divider border-color="#dee2e6" border-width="1px" padding="20px 0"></mj-divider></mj-column></mj-section>
+        <mj-section background-color="#ffffff" padding="20px">
+          <mj-column>
+            <mj-text font-size="20px" font-weight="bold" padding-bottom="10px">Junior Executive Opportunity</mj-text>
+            <mj-text>Hi {{name}},</mj-text>
+            <mj-text>This is a friendly check-in about your activity as a Junior Executive. Your count is {{activityCount}}, below the threshold of {{threshold}}. We encourage you to take this opportunity to learn and contribute more!</mj-text>
+            <mj-text>Get involved:</mj-text>
+            <ul><li>Shadow an Executive or Senior Executive.</li><li>Volunteer for tasks at meetings or events.</li><li>Ask questions and learn about club operations.</li></ul>
+            <mj-button href="https://example.com/learning-resources">Club Learning Resources</mj-button>
+            <mj-text padding-top="15px">Keep up the great work,<br />The ClubPulse Team</mj-text>
+          </mj-column>
+        </mj-section>
+        <mj-section padding="20px 0"><mj-column><mj-text align="center" color="#6c757d" font-size="12px">Junior Executive Notification</mj-text></mj-column></mj-section>
+      </mj-body>
+    </mjml>

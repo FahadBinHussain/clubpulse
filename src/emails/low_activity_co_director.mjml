@@ -1,0 +1,22 @@
+    <mjml>
+      <mj-head>
+        <mj-title>Director Activity Review</mj-title>
+        <mj-preview>A note regarding your Co-Director activity level.</mj-preview>
+        <mj-attributes><mj-all font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" /><mj-text font-size="16px" line-height="24px" color="#333" /><mj-button background-color="#6f42c1" color="white" font-size="16px" border-radius="4px" /></mj-attributes>
+      </mj-head>
+      <mj-body background-color="#f8f9fa">
+        <mj-section padding="20px 0"><mj-column><mj-image width="100px" src="https://placehold.co/100x50/6f42c1/white?text=ClubPulse" alt="ClubPulse Logo"></mj-image><mj-divider border-color="#dee2e6" border-width="1px" padding="20px 0"></mj-divider></mj-column></mj-section>
+        <mj-section background-color="#ffffff" padding="20px">
+          <mj-column>
+            <mj-text font-size="20px" font-weight="bold" padding-bottom="10px">Director-Level Activity</mj-text>
+            <mj-text>Dear {{name}},</mj-text>
+            <mj-text>As Co-Director, your engagement guides the club's direction. We've recorded your recent activity count as {{activityCount}}, which is below the expected threshold of {{threshold}}. Maintaining high visibility is important for leadership.</mj-text>
+            <mj-text>Consider spearheading:</mj-text>
+            <ul><li>A strategic initiative discussion.</li><li>Cross-committee collaboration.</li><li>Mentorship for executive members.</li></ul>
+            <mj-button href="https://example.com/strategic-plan">Review Strategic Plan</mj-button>
+            <mj-text padding-top="15px">Sincerely,<br />ClubPulse Governance</mj-text>
+          </mj-column>
+        </mj-section>
+        <mj-section padding="20px 0"><mj-column><mj-text align="center" color="#6c757d" font-size="12px">Co-Director Notification</mj-text></mj-column></mj-section>
+      </mj-body>
+    </mjml>

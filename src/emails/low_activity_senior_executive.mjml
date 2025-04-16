@@ -1,0 +1,22 @@
+    <mjml>
+      <mj-head>
+        <mj-title>Senior Executive Activity Check</mj-title>
+        <mj-preview>A check-in regarding your activity as a Senior Executive.</mj-preview>
+        <mj-attributes><mj-all font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" /><mj-text font-size="16px" line-height="24px" color="#333" /><mj-button background-color="#D9534F" color="white" font-size="16px" border-radius="4px" /></mj-attributes>
+      </mj-head>
+      <mj-body background-color="#f8f9fa">
+        <mj-section padding="20px 0"><mj-column><mj-image width="100px" src="https://placehold.co/100x50/D9534F/white?text=ClubPulse" alt="ClubPulse Logo"></mj-image><mj-divider border-color="#dee2e6" border-width="1px" padding="20px 0"></mj-divider></mj-column></mj-section>
+        <mj-section background-color="#ffffff" padding="20px">
+          <mj-column>
+            <mj-text font-size="20px" font-weight="bold" padding-bottom="10px">Senior Executive Engagement</mj-text>
+            <mj-text>Hi {{name}},</mj-text>
+            <mj-text>This is a note regarding your activity level as Senior Executive. Your count is {{activityCount}}, below the threshold of {{threshold}}. Your leadership in initiatives is highly valued.</mj-text>
+            <mj-text>Ways to re-engage:</mj-text>
+            <ul><li>Lead a project team meeting.</li><li>Report on initiative progress.</li><li>Mentor Junior Executives.</li></ul>
+            <mj-button href="https://example.com/project-updates">See Project Updates</mj-button>
+            <mj-text padding-top="15px">Regards,<br />The ClubPulse Team</mj-text>
+          </mj-column>
+        </mj-section>
+        <mj-section padding="20px 0"><mj-column><mj-text align="center" color="#6c757d" font-size="12px">Senior Executive Notification</mj-text></mj-column></mj-section>
+      </mj-body>
+    </mjml>

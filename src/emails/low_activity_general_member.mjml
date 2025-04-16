@@ -1,0 +1,22 @@
+    <mjml>
+      <mj-head>
+        <mj-title>Club Activity Check-in</mj-title>
+        <mj-preview>A quick check-in regarding your club activity.</mj-preview>
+        <mj-attributes><mj-all font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" /><mj-text font-size="16px" line-height="24px" color="#333" /><mj-button background-color="#007bff" color="white" font-size="16px" border-radius="4px" /></mj-attributes>
+      </mj-head>
+      <mj-body background-color="#f4f4f7">
+        <mj-section padding="20px 0"><mj-column><mj-image width="100px" src="https://placehold.co/100x50/007bff/white?text=ClubPulse" alt="ClubPulse Logo"></mj-image><mj-divider border-color="#DFE3E8" border-width="1px" padding="20px 0"></mj-divider></mj-column></mj-section>
+        <mj-section background-color="#ffffff" padding="20px">
+          <mj-column>
+            <mj-text font-size="20px" font-weight="bold" padding-bottom="10px">General Member Activity</mj-text>
+            <mj-text>Hi {{name}},</mj-text>
+            <mj-text>Just reaching out regarding your club activity. Your current count is {{activityCount}}, which is below the active member threshold of {{threshold}}. Participation is key to a vibrant club!</mj-text>
+            <mj-text>Simple ways to get involved:</mj-text>
+            <ul><li>Attend the next general meeting.</li><li>Participate in an upcoming event.</li><li>Join a discussion on our online forum.</li></ul>
+            <mj-button href="https://example.com/club-events">View Upcoming Events</mj-button>
+            <mj-text padding-top="15px">Best,<br />The ClubPulse Team</mj-text>
+          </mj-column>
+        </mj-section>
+        <mj-section padding="20px 0"><mj-column><mj-text align="center" color="#999" font-size="12px">General Member Notification</mj-text></mj-column></mj-section>
+      </mj-body>
+    </mjml>

@@ -19,17 +19,14 @@ const COLUMN_INDICES = {
   NAME: 0,
   EMAIL: 1,
   ACTIVITY_COUNT: 2,
-  LAST_UPDATED: 3, // Assuming this exists, might not be needed for this action
-  ROLE: 4,           // Assuming this exists
-  PERSONALITY_TAG: 5 // Assuming this exists
+  ROLE: 3,           // Role is now index 3 (Column D)
 };
 
 interface ClubMemberData {
   name: string;
   email: string;
   activityCount: number;
-  role?: string; // Optional based on your sheet
-  personalityTag?: string; // Optional based on your sheet
+  role?: string; // Role is now mandatory based on new structure, but keep optional for safety
   rowIndex: number; // Original row index for reference/debugging
 }
 
@@ -39,6 +36,42 @@ const ACTIVITY_THRESHOLD = 5;
 const sheetMemberDataRange = process.env.GOOGLE_SHEET_MEMBER_DATA_RANGE;
 // *** IMPORTANT: Update this range based on your actual sheet name and data columns ***
 // const SHEET_RANGE = 'Sheet1!A2:F'; // <-- Removed hardcoded value
+
+// --- Helper Function: Get Template Info based on Role --- 
+function getTemplateInfo(role?: string): { filename: string; identifier: string } {
+  const normalizedRole = (role || '').trim().toLowerCase();
+
+  // Case-insensitive matching for roles
+  switch (normalizedRole) {
+    case 'co-directors':
+    case 'co director': // Handle variations
+    case 'co-director':
+      return { filename: 'low_activity_co_director.mjml', identifier: 'low_activity_co_director' };
+    case 'senior executives':
+    case 'senior executive':
+      return { filename: 'low_activity_senior_executive.mjml', identifier: 'low_activity_senior_executive' };
+    case 'executives':
+    case 'executive':
+      return { filename: 'low_activity_executive.mjml', identifier: 'low_activity_executive' };
+    case 'junior executives':
+    case 'junior executive':
+      return { filename: 'low_activity_junior_executive.mjml', identifier: 'low_activity_junior_executive' };
+    case 'new recruits':
+    case 'new recruit':
+      return { filename: 'low_activity_new_recruit.mjml', identifier: 'low_activity_new_recruit' };
+    case 'general members':
+    case 'general member':
+    case 'member': // Common variation
+       return { filename: 'low_activity_general_member.mjml', identifier: 'low_activity_general_member' };
+    // TODO: Add cases for Personality Tags if needed, maybe with precedence logic
+    // case 'introvert': etc...
+    default:
+      // Fallback to general member template if role is missing, empty, or doesn't match
+      console.log(`Role '${role}' not matched or empty, defaulting to general member template.`);
+      return { filename: 'low_activity_general_member.mjml', identifier: 'low_activity_general_member' };
+  }
+}
+// --- End Helper Function ---
 
 export async function checkMemberActivity(): Promise<{ success: boolean; message: string; checked?: number; flagged?: number; errors?: number }> {
   console.log("Starting member activity check...");
@@ -63,21 +96,6 @@ export async function checkMemberActivity(): Promise<{ success: boolean; message
   let belowThresholdCount = 0;
   let errorCount = 0;
 
-  // --- Pre-load MJML template --- 
-  let mjmlTemplateContent = '';
-  try {
-    // Construct the absolute path to the template file
-    const templatePath = path.join(process.cwd(), 'src', 'emails', 'low_activity_warning.mjml');
-    mjmlTemplateContent = await fs.readFile(templatePath, 'utf-8');
-    console.log("Successfully loaded MJML template.");
-  } catch (templateError) {
-    console.error("Failed to load MJML template:", templateError);
-    // Decide if you want to proceed without the template or return an error
-    // For now, return an error as the template is crucial
-    return { success: false, message: "Failed to load email template. Cannot proceed." };
-  }
-  // --- End Pre-load --- 
-
   try {
     const rawData = await getSheetData(sheetMemberDataRange);
 
@@ -100,23 +118,21 @@ export async function checkMemberActivity(): Promise<{ success: boolean; message
       const activityCountValue = row[COLUMN_INDICES.ACTIVITY_COUNT];
       const nameValue = row[COLUMN_INDICES.NAME];
       const roleValue = row[COLUMN_INDICES.ROLE];
-      const personalityTagValue = row[COLUMN_INDICES.PERSONALITY_TAG];
 
-      // Validate and process email
+      // Validate email
       if (typeof emailValue !== 'string' || !emailValue) {
         console.warn(`Skipping row ${index + 2}: Invalid or missing email.`);
         errorCount++;
-        return; // Skip this row
+        return; 
       }
-      const email = emailValue; // Guaranteed non-empty string
+      const email = emailValue; 
 
-      // Validate and process activity count
+      // Validate activity count
       if (activityCountValue === undefined || activityCountValue === null) {
          console.warn(`Skipping row ${index + 2}: Missing activity count.`);
          errorCount++;
          return; // Skip this row
       }
-
       let countStr: string;
       if (typeof activityCountValue === 'number') {
         countStr = String(activityCountValue);
@@ -127,30 +143,30 @@ export async function checkMemberActivity(): Promise<{ success: boolean; message
           errorCount++;
           return; // Skip this row
       }
-
       const activityCount = parseInt(countStr, 10);
       if (isNaN(activityCount)) {
         console.warn(`Skipping row ${index + 2}: Invalid activity count value (parsed from '${countStr}').`);
         errorCount++;
         return; // Skip this row
       }
-
-      // Process name: Ensure it's a string, default to empty string otherwise
+      
+      // Process name
       const name = typeof nameValue === 'string' ? nameValue : '';
 
-      // Process role: Ensure it's a string, default to undefined otherwise
-      const role = typeof roleValue === 'string' ? roleValue : undefined;
+      // Process role: Now expected in column D (index 3)
+      const role = typeof roleValue === 'string' ? roleValue : undefined; 
+      // Log if role is missing, as it's now more critical
+      if (!role) {
+         console.warn(`Row ${index + 2}: Missing role value (used for template selection).`);
+         // Decide if you want to error out or let getTemplateInfo handle the default
+      }
 
-      // Process personalityTag: Ensure it's a string, default to undefined otherwise
-      const personalityTag = typeof personalityTagValue === 'string' ? personalityTagValue : undefined;
-
-      // Add validated data to the list
+      // Add validated data to the list (without personalityTag)
       membersToProcess.push({
         name: name,
         email: email,
         activityCount: activityCount,
         role: role,
-        personalityTag: personalityTag,
         rowIndex: index + 2
       });
     });
@@ -187,80 +203,90 @@ export async function checkMemberActivity(): Promise<{ success: boolean; message
 
         // Only proceed if no QUEUED, APPROVED, CANCELED, or SENT email was found
         flaggedCount++;
-        console.log(`Flagging member: ${member.email} (Activity: ${member.activityCount})`);
+        console.log(`Flagging member: ${member.email} (Activity: ${member.activityCount}) using template: ${getTemplateInfo(member.role).identifier}`);
 
-        // Determine template and render content
-        const emailSubject = `Club Activity Alert for ${member.name || 'Member'}`;
-        // Placeholder for template selection logic
-        const templateIdentifier = 'low_activity_generic'; 
+        // --- Determine and Load Specific Template --- 
+        const { filename: templateFilename, identifier: templateIdentifier } = getTemplateInfo(member.role);
+        let mjmlTemplateContent = '';
         let renderedHtml = '';
-
+        
         try {
-            // Personalize the MJML template
+          const templatePath = path.join(process.cwd(), 'src', 'emails', templateFilename);
+          mjmlTemplateContent = await fs.readFile(templatePath, 'utf-8');
+          console.log(`Loaded template '${templateFilename}' for ${member.email} (Role: ${member.role})`);
+        } catch (templateError) {
+          console.error(`Failed to load template '${templateFilename}' for ${member.email}:`, templateError);
+          errorCount++;
+          // Try falling back to the default template if specific one fails?
+          // For now, just skip this member if their specific template is missing.
+          continue; 
+        }
+        // --- End Load --- 
+
+        // Only proceed if template content was loaded
+        if (!mjmlTemplateContent) {
+          console.warn(`Skipping DB entry for ${member.email} due to missing template content for '${templateFilename}'.`);
+          continue;
+        }
+
+        const emailSubject = `Club Activity Alert for ${member.name || 'Member'}`;
+        
+        try {
+            // Personalize the loaded MJML template
             const personalizedMjml = mjmlTemplateContent
                 .replace(/{{name}}/g, member.name || 'Member')
                 .replace(/{{activityCount}}/g, member.activityCount.toString())
                 .replace(/{{threshold}}/g, ACTIVITY_THRESHOLD.toString());
 
             // Render MJML to HTML
-            const { html, errors: mjmlErrors } = mjml(personalizedMjml, {
-                // Optional: Add validation options if needed
-                // validationLevel: 'strict' 
-            });
+            const { html, errors: mjmlErrors } = mjml(personalizedMjml, {});
 
             if (mjmlErrors.length > 0) {
-                console.warn(`MJML rendering errors for ${member.email}:`, mjmlErrors);
-                // Decide how to handle MJML errors - maybe fall back to plain text or log and skip
-                // For now, log the error and proceed with potentially broken HTML or skip
+                console.warn(`MJML rendering errors for ${member.email} using template ${templateIdentifier}:`, mjmlErrors);
                 errorCount++;
-                continue; // Skip this member if template rendering failed badly
+                continue; 
             }
             renderedHtml = html;
 
         } catch (renderError) {
-            console.error(`Error rendering MJML template for ${member.email}:`, renderError);
+            console.error(`Error rendering template '${templateIdentifier}' for ${member.email}:`, renderError);
             errorCount++;
-            continue; // Skip this member on rendering error
+            continue; 
         }
         
-        // Only proceed if HTML was successfully rendered
         if (!renderedHtml) { 
-            console.warn(`Skipping DB entry for ${member.email} due to empty rendered HTML.`);
+            console.warn(`Skipping DB entry for ${member.email} due to empty rendered HTML from template '${templateIdentifier}'.`);
             continue;
         }
 
         try {
-          // Use Prisma transaction to ensure both operations succeed or fail together
+          // Use Prisma transaction 
           await prisma.$transaction([
-            // 1. Create EmailQueue entry with rendered HTML
             prisma.emailQueue.create({
               data: {
                 recipientEmail: member.email,
                 recipientName: member.name,
                 subject: emailSubject,
-                bodyHtml: renderedHtml, // <-- Use the rendered HTML
-                template: templateIdentifier,
+                bodyHtml: renderedHtml, 
+                template: templateIdentifier, // <-- Use the specific identifier
                 status: EmailStatus.QUEUED,
               },
             }),
-            // 2. Create WarningLog entry
             prisma.warningLog.create({
               data: {
                 recipientEmail: member.email,
                 recipientName: member.name,
                 activityCount: member.activityCount,
                 threshold: ACTIVITY_THRESHOLD,
-                templateUsed: templateIdentifier,
+                templateUsed: templateIdentifier, // <-- Use the specific identifier
                 status: EmailStatus.QUEUED, 
               },
             }),
           ]);
-           console.log(`Successfully queued email and logged warning for ${member.email}`);
+           console.log(`Successfully queued email (${templateIdentifier}) and logged warning for ${member.email}`);
         } catch (dbError) {
-            console.error(`Failed to process member ${member.email} (Row ${member.rowIndex}):`, dbError);
+            console.error(`Failed to process member ${member.email} (Row ${member.rowIndex}) using template ${templateIdentifier}:`, dbError);
             errorCount++;
-             // Decide if you want to stop the whole process on a single DB error or just log and continue
-            // For now, we log and continue
         }
       }
     }
@@ -399,20 +425,18 @@ export async function getEmailQueue(): Promise<{ success: boolean; message: stri
         status: EmailStatus.QUEUED,
       },
       orderBy: {
-        createdAt: 'asc', // Show oldest queued first
+        createdAt: 'asc', 
       },
-      select: { // Select only needed fields for the UI
+      select: { 
         id: true,
         recipientEmail: true,
         recipientName: true,
         subject: true,
         template: true,
         createdAt: true,
-        // Exclude bodyHtml for brevity in the list view
       }
     });
 
-    // Log the emails being returned
     console.log("Emails being returned by getEmailQueue:", JSON.stringify(queuedEmails, null, 2));
 
     return { success: true, message: "Fetched queued emails.", emails: queuedEmails };
@@ -444,22 +468,19 @@ export async function updateEmailStatus(
   }
 
   try {
-    // Find the email to get details needed for updating the WarningLog
     const emailToUpdate = await prisma.emailQueue.findUnique({
         where: { id: emailId },
-        select: { recipientEmail: true, template: true, status: true } // Get current status too
+        select: { recipientEmail: true, template: true, status: true } 
     });
 
     if (!emailToUpdate) {
         return { success: false, message: `Email with ID ${emailId} not found.` };
     }
     
-    // Ensure we are only updating emails that are currently QUEUED
     if (emailToUpdate.status !== EmailStatus.QUEUED) {
         return { success: false, message: `Email ${emailId} is not in QUEUED status (current: ${emailToUpdate.status}). Cannot update.` };
     }
 
-    // Use a transaction to update both EmailQueue and WarningLog
     await prisma.$transaction([
       prisma.emailQueue.update({
         where: { id: emailId },
@@ -469,18 +490,16 @@ export async function updateEmailStatus(
         where: {
           recipientEmail: emailToUpdate.recipientEmail,
           templateUsed: emailToUpdate.template,
-          status: EmailStatus.QUEUED, // Important: Only update logs linked to the QUEUED email
+          status: EmailStatus.QUEUED, 
         },
-        data: { status: newStatus }, // Update WarningLog status to match
+        data: { status: newStatus }, 
       }),
     ]);
 
     console.log(`Successfully updated email ${emailId} and related warning log(s) to ${newStatus}.`);
     
     // TODO: Consider adding an AdminLog entry here for audit trail
-    // Example: await createAdminLog(session.user.id, session.user.email, `updated_email_status`, { emailId, newStatus });
 
-    // Revalidate the path where the queue is displayed (assuming it's the home page for now)
     revalidatePath('/'); 
 
     return { success: true, message: `Email status updated to ${newStatus}.` };

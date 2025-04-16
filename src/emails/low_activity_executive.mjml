@@ -1,0 +1,22 @@
+    <mjml>
+      <mj-head>
+        <mj-title>Executive Activity Reminder</mj-title>
+        <mj-preview>A reminder about club activity expectations.</mj-preview>
+        <mj-attributes><mj-all font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" /><mj-text font-size="16px" line-height="24px" color="#333" /><mj-button background-color="#F0AD4E" color="white" font-size="16px" border-radius="4px" /></mj-attributes>
+      </mj-head>
+      <mj-body background-color="#f8f9fa">
+        <mj-section padding="20px 0"><mj-column><mj-image width="100px" src="https://placehold.co/100x50/F0AD4E/white?text=ClubPulse" alt="ClubPulse Logo"></mj-image><mj-divider border-color="#dee2e6" border-width="1px" padding="20px 0"></mj-divider></mj-column></mj-section>
+        <mj-section background-color="#ffffff" padding="20px">
+          <mj-column>
+            <mj-text font-size="20px" font-weight="bold" padding-bottom="10px">Executive Activity</mj-text>
+            <mj-text>Hi {{name}},</mj-text>
+            <mj-text>Checking in on your activity as an Executive. Your count is {{activityCount}}, below the threshold of {{threshold}}. Your contributions are important for club operations.</mj-text>
+            <mj-text>Ways to contribute:</mj-text>
+            <ul><li>Take ownership of a specific task.</li><li>Assist a Senior Executive or Director.</li><li>Attend committee meetings regularly.</li></ul>
+            <mj-button href="https://example.com/committee-notes">Access Committee Notes</mj-button>
+            <mj-text padding-top="15px">Best,<br />The ClubPulse Team</mj-text>
+          </mj-column>
+        </mj-section>
+        <mj-section padding="20px 0"><mj-column><mj-text align="center" color="#6c757d" font-size="12px">Executive Notification</mj-text></mj-column></mj-section>
+      </mj-body>
+    </mjml>

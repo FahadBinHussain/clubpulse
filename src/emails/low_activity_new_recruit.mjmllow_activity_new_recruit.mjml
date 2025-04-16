@@ -1,0 +1,22 @@
+    <mjml>
+      <mj-head>
+        <mj-title>Welcome & Getting Started!</mj-title>
+        <mj-preview>Encouragement for getting started in the club.</mj-preview>
+        <mj-attributes><mj-all font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" /><mj-text font-size="16px" line-height="24px" color="#333" /><mj-button background-color="#28a745" color="white" font-size="16px" border-radius="4px" /></mj-attributes>
+      </mj-head>
+      <mj-body background-color="#f8f9fa">
+        <mj-section padding="20px 0"><mj-column><mj-image width="100px" src="https://placehold.co/100x50/28a745/white?text=ClubPulse" alt="ClubPulse Logo"></mj-image><mj-divider border-color="#dee2e6" border-width="1px" padding="20px 0"></mj-divider></mj-column></mj-section>
+        <mj-section background-color="#ffffff" padding="20px">
+          <mj-column>
+            <mj-text font-size="20px" font-weight="bold" padding-bottom="10px">Welcome, New Recruit!</mj-text>
+            <mj-text>Hi {{name}},</mj-text>
+            <mj-text>Welcome to the club! We track activity to encourage participation. Your initial count is {{activityCount}}, and the general threshold is {{threshold}}. No pressure, but we'd love to see you get involved soon!</mj-text>
+            <mj-text>Easy first steps:</mj-text>
+            <ul><li>Introduce yourself at the next meeting.</li><li>Attend a new member orientation session (if available).</li><li>Explore the club website/resources.</li></ul>
+            <mj-button href="https://example.com/new-member-guide">New Member Guide</mj-button>
+            <mj-text padding-top="15px">Welcome Aboard,<br />The ClubPulse Team</mj-text>
+          </mj-column>
+        </mj-section>
+        <mj-section padding="20px 0"><mj-column><mj-text align="center" color="#6c757d" font-size="12px">New Recruit Notification</mj-text></mj-column></mj-section>
+      </mj-body>
+    </mjml>
