@@ -7,10 +7,14 @@ import { Role } from "@prisma/client";
 import { getSheetData } from "@/lib/googleSheets";
 
 // Define the ranges for the sheets via environment variables
-const panelSheetRange = process.env.GOOGLE_SHEET_PANEL_MEMBERS_RANGE;
+// const panelSheetRange = process.env.GOOGLE_SHEET_PANEL_MEMBERS_RANGE; // <-- REMOVED
 const memberSheetRange = process.env.GOOGLE_SHEET_MEMBER_DATA_RANGE;
-// Assuming email is the second column (index 1) in the member sheet based on COLUMN_INDICES in actions.ts
+const panelAccessRolesRaw = process.env.PANEL_ACCESS_ROLES || "";
+const panelRolesList = panelAccessRolesRaw.split(',').map(role => role.trim().toLowerCase()).filter(Boolean);
+
+// Assuming indices based on COLUMN_INDICES in actions.ts
 const MEMBER_EMAIL_COLUMN_INDEX = 1;
+const MEMBER_ROLE_COLUMN_INDEX = 3; // Column D for Role
 
 // Define and export authOptions here
 export const authOptions: NextAuthOptions = {
@@ -39,45 +43,48 @@ export const authOptions: NextAuthOptions = {
         return;
       }
       const userEmailLower = user.email.toLowerCase();
-      let correctRole: Role = Role.GUEST;
+      let correctRole: Role = Role.GUEST; // Default to GUEST
 
       try {
-        let isPanel = false;
-        if (panelSheetRange) {
-          const panelData = await getSheetData(panelSheetRange);
-          if (panelData) {
-            const panelEmails = panelData.flat().map(e => String(e).trim().toLowerCase());
-            if (panelEmails.includes(userEmailLower)) {
-              correctRole = Role.PANEL;
-              isPanel = true;
-              console.log(`User ${user.email} is a PANEL member.`);
-            }
-          } else {
-            console.error("Failed to fetch panel data during signIn event.");
-          }
-        } else {
-          console.warn("Panel sheet range not configured. Cannot check for PANEL role.");
-        }
+        // REMOVED: Logic for checking separate panel sheet range
+        // let isPanel = false;
+        // if (panelSheetRange) { ... }
 
-        if (!isPanel && memberSheetRange) {
+        // Check member sheet for role
+        if (memberSheetRange) {
           const memberData = await getSheetData(memberSheetRange);
           if (memberData) {
-            const memberEmails = memberData
-              .map(row => row && String(row[MEMBER_EMAIL_COLUMN_INDEX]).trim().toLowerCase())
-              .filter(email => email);
-            if (memberEmails.includes(userEmailLower)) {
-              correctRole = Role.MEMBER;
-              console.log(`User ${user.email} is a MEMBER.`);
-            } else {
-              console.log(`User ${user.email} is not found in member sheet, remaining GUEST.`);
+            let userFound = false;
+            for (const row of memberData) {
+              const sheetEmail = row && String(row[MEMBER_EMAIL_COLUMN_INDEX]).trim().toLowerCase();
+              const sheetRole = row && String(row[MEMBER_ROLE_COLUMN_INDEX]).trim().toLowerCase(); // Get role from Col D
+
+              if (sheetEmail === userEmailLower) {
+                userFound = true;
+                if (panelRolesList.includes(sheetRole)) {
+                  correctRole = Role.PANEL;
+                  console.log(`User ${user.email} found in member sheet with PANEL role: ${sheetRole}.`);
+                } else {
+                  correctRole = Role.MEMBER;
+                  console.log(`User ${user.email} found in member sheet with MEMBER role: ${sheetRole}.`);
+                }
+                break; // Stop searching once user is found
+              }
+            }
+            if (!userFound) {
+               console.log(`User ${user.email} not found in member sheet, assigning GUEST role.`);
+               // correctRole remains GUEST
             }
           } else {
-            console.error("Failed to fetch member data during signIn event.");
+            console.error("Failed to fetch member data during signIn event. Assigning GUEST role.");
+             // correctRole remains GUEST
           }
-        } else if (!isPanel) {
-          console.warn("Member sheet range not configured. Cannot check for MEMBER role.");
+        } else {
+          console.warn("Member sheet range not configured. Cannot determine role. Assigning GUEST role.");
+          // correctRole remains GUEST
         }
 
+        // Update user role in database regardless of whether they were found or not
         console.log(`Final determined role: ${correctRole}. Updating database...`);
         await prisma.user.update({
           where: { email: user.email },
