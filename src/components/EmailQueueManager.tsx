@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useTransition } from 'react';
-import { getEmailQueue, updateEmailStatus, checkMemberActivity } from '@/app/actions';
+import { getEmailQueue, updateEmailStatus, checkMemberActivity, getEmailBodyHtml } from '@/app/actions';
 import { EmailStatus } from '@prisma/client';
 
 interface QueuedEmail {
@@ -29,6 +29,14 @@ export default function EmailQueueManager() {
   const [isChecking, startCheckTransition] = useTransition();
   const [checkMessage, setCheckMessage] = useState<string | null>(null);
   const [sheetErrors, setSheetErrors] = useState<SheetError[]>([]); // <-- State for sheet errors
+
+  // --- State for Preview Modal ---
+  const [isPreviewing, startPreviewTransition] = useTransition();
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [currentPreviewEmailId, setCurrentPreviewEmailId] = useState<string | null>(null);
+  // --- End Preview State ---
 
   const handleCheckAndRefresh = () => {
     startCheckTransition(async () => {
@@ -118,8 +126,38 @@ export default function EmailQueueManager() {
     });
   };
 
+  // --- Handle Preview Click ---
+  const handlePreview = (emailId: string) => {
+    startPreviewTransition(async () => {
+      setPreviewError(null);
+      setPreviewHtml(null);
+      setIsModalOpen(true);
+      setCurrentPreviewEmailId(emailId); // Keep track of which email is being previewed
+      
+      try {
+        const result = await getEmailBodyHtml(emailId);
+        if (result.success && result.htmlContent) {
+          setPreviewHtml(result.htmlContent);
+        } else {
+          setPreviewError(result.message || "Failed to fetch email content.");
+        }
+      } catch (err) {
+        setPreviewError("An unexpected error occurred while fetching preview.");
+        console.error("Preview error:", err);
+      }
+    });
+  };
+  
+  const closeModal = () => {
+      setIsModalOpen(false);
+      setPreviewHtml(null);
+      setPreviewError(null);
+      setCurrentPreviewEmailId(null);
+  };
+  // --- End Preview Handling ---
+
   return (
-    <div className="mt-6 p-4 border rounded-lg shadow-md w-full max-w-4xl flex flex-col gap-4"> {/* Added flex-col and gap-4 */} 
+    <div className="mt-6 p-4 border rounded-lg shadow-md w-full max-w-4xl flex flex-col gap-4 relative"> {/* Added relative for modal positioning */} 
       {/* --- Email Queue Section --- */}
       <div className="w-full">
         <div className="flex justify-between items-center mb-2">
@@ -165,21 +203,27 @@ export default function EmailQueueManager() {
                     <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700">{email.subject}</td>
                     <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{email.createdAt.toLocaleString()}</td>
                     <td className="px-4 py-2 whitespace-nowrap text-sm font-medium space-x-2 sticky right-0 bg-white">
+                       <button
+                        onClick={() => handlePreview(email.id)} // <-- Add Preview Button
+                        disabled={isUpdating || isChecking || isPreviewing}
+                        className="text-blue-600 hover:text-blue-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isPreviewing && currentPreviewEmailId === email.id ? "Loading..." : "Preview"}
+                      </button>
                       <button
                         onClick={() => handleUpdate(email.id, EmailStatus.APPROVED)}
-                        disabled={isUpdating || isChecking}
+                        disabled={isUpdating || isChecking || isPreviewing}
                         className="text-green-600 hover:text-green-900 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Approve
                       </button>
                       <button
                         onClick={() => handleUpdate(email.id, EmailStatus.CANCELED)}
-                        disabled={isUpdating || isChecking}
+                        disabled={isUpdating || isChecking || isPreviewing}
                         className="text-red-600 hover:text-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Cancel
                       </button>
-                      {/* TODO: Add Preview button later */} 
                     </td>
                   </tr>
                 ))}
@@ -203,16 +247,23 @@ export default function EmailQueueManager() {
                   <span className="font-medium">Queued:</span> {email.createdAt.toLocaleString()}
                 </div>
                 <div className="flex justify-end space-x-3 border-t pt-2">
+                   <button
+                    onClick={() => handlePreview(email.id)} // <-- Add Preview Button
+                    disabled={isUpdating || isChecking || isPreviewing}
+                    className="text-blue-600 hover:text-blue-900 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                  >
+                    {isPreviewing && currentPreviewEmailId === email.id ? "Loading..." : "Preview"}
+                  </button>
                   <button
                     onClick={() => handleUpdate(email.id, EmailStatus.APPROVED)}
-                    disabled={isUpdating || isChecking}
+                    disabled={isUpdating || isChecking || isPreviewing}
                     className="text-green-600 hover:text-green-900 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
                   >
                     Approve
                   </button>
                   <button
                     onClick={() => handleUpdate(email.id, EmailStatus.CANCELED)}
-                    disabled={isUpdating || isChecking}
+                    disabled={isUpdating || isChecking || isPreviewing}
                     className="text-red-600 hover:text-red-900 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
                   >
                     Cancel
@@ -280,6 +331,54 @@ export default function EmailQueueManager() {
           </div>
         </div>
       )}
+
+      {/* --- Preview Modal --- */}
+      {isModalOpen && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm" 
+          onClick={closeModal} // Close if clicking outside the modal content
+        >
+          <div 
+            className="bg-white rounded-lg shadow-xl p-6 w-full max-w-3xl max-h-[80vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside modal content
+          >
+            <div className="flex justify-between items-center border-b pb-3 mb-4">
+              <h3 className="text-xl font-semibold">Email Preview</h3>
+              <button 
+                onClick={closeModal} 
+                className="text-gray-500 hover:text-gray-800 text-2xl leading-none"
+                aria-label="Close modal"
+              >
+                &times; {/* Unicode multiplication sign for 'X' */} 
+              </button>
+            </div>
+            
+            {isPreviewing && !previewHtml && <p>Loading preview...</p>}
+            {previewError && <p className="text-red-600">Error: {previewError}</p>}
+            
+            {previewHtml && (
+              <div 
+                className="prose max-w-none" // Use prose for basic styling, max-w-none to allow full width
+                dangerouslySetInnerHTML={{ __html: previewHtml }} 
+              />
+            )}
+            
+            {!isPreviewing && !previewHtml && !previewError && (
+                <p>No content to display.</p> // Should not happen often
+            )}
+
+            <div className="border-t pt-3 mt-4 flex justify-end">
+              <button 
+                onClick={closeModal} 
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-300"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* --- End Preview Modal --- */}
     </div>
   );
 } 

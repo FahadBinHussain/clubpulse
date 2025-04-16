@@ -587,6 +587,48 @@ export async function updateEmailStatus(
   }
 }
 
+// --- Server Action: Get Email Body HTML (for Preview) ---
+export async function getEmailBodyHtml(
+  emailId: string
+): Promise<{ success: boolean; message: string; htmlContent?: string }> {
+  console.log(`Attempting to fetch HTML content for email ${emailId}...`);
+
+  // --- Authorization Check ---
+  const session = await getServerSession(authOptions);
+  if (!session || session.user?.role !== Role.PANEL) {
+      console.warn("Unauthorized attempt to fetch email HTML content. User:", session?.user?.email);
+      return { success: false, message: "Unauthorized: You do not have permission to preview emails." };
+  }
+  console.log(`Authorized user ${session.user.email} is previewing email ${emailId}.`);
+  // --- End Authorization Check ---
+
+  try {
+    const email = await prisma.emailQueue.findUnique({
+      where: { 
+        id: emailId,
+        // Optional: Ensure it's still in a state where preview makes sense (e.g., QUEUED)
+        // status: EmailStatus.QUEUED 
+      },
+      select: { bodyHtml: true, status: true }, 
+    });
+
+    if (!email) {
+      return { success: false, message: `Email with ID ${emailId} not found.` };
+    }
+    
+    // Optional: Check status before returning HTML. You might allow previewing APPROVED emails too.
+    // if (email.status !== EmailStatus.QUEUED) {
+    //   return { success: false, message: `Email ${emailId} is not in QUEUED status (current: ${email.status}). Cannot preview.` };
+    // }
+
+    return { success: true, message: "Fetched email HTML content.", htmlContent: email.bodyHtml };
+
+  } catch (error) {
+    console.error(`Error fetching HTML content for email ${emailId}:`, error);
+    return { success: false, message: `An unexpected error occurred: ${error instanceof Error ? error.message : String(error)}` };
+  }
+}
+
 // --- Server Action: Get Role Thresholds --- 
 export async function getRoleThresholds(): Promise<{
   success: boolean;
