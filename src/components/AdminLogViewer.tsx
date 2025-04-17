@@ -31,12 +31,13 @@ export default function AdminLogViewer() {
   }, []);
 
   // Helper to format details JSON nicely
-  const formatDetails = (details: any): string => { 
+  const formatDetails = (details: unknown): string => {
       if (!details) return 'N/A';
       try {
           // Basic formatting, customize as needed
           return JSON.stringify(details);
       } catch (e) {
+          console.error("Error formatting details JSON:", e); // Log the error
           return 'Invalid JSON';
       }
   };

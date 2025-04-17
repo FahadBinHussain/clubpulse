@@ -920,12 +920,22 @@ export async function getMemberStatus(): Promise<{
 // --- End Member Status Action --- 
 
 // --- Server Action: Get Warning Logs --- 
-export async function getWarningLogs(): Promise<{
+
+// Define return type with pagination info
+interface WarningLogResponse {
   success: boolean;
   message: string;
   logs?: WarningLog[];
-}> {
-  console.log("Attempting to fetch warning logs...");
+  totalCount?: number;
+  page?: number;
+  pageSize?: number;
+}
+
+export async function getWarningLogs(
+  page: number = 1,      // Default to page 1
+  pageSize: number = 10  // Default page size
+): Promise<WarningLogResponse> {
+  console.log(`Attempting to fetch warning logs (Page: ${page}, Size: ${pageSize})...`);
 
   // --- Authorization Check --- 
   const session = await getServerSession(authOptions);
@@ -937,15 +947,33 @@ export async function getWarningLogs(): Promise<{
   // --- End Authorization Check ---
 
   try {
-    const logs = await prisma.warningLog.findMany({
-      orderBy: {
-        createdAt: 'desc', // Show most recent first
-      },
-      // Add pagination or filtering here later if needed
-      // take: 20, 
-      // skip: 0, 
-    });
-    return { success: true, message: "Fetched warning logs.", logs };
+    // Validate page and pageSize
+    const pageNumber = Math.max(1, page); // Ensure page is at least 1
+    const size = Math.max(1, Math.min(50, pageSize)); // Ensure pageSize is between 1 and 50
+    const skip = (pageNumber - 1) * size;
+
+    // Use transaction to get both logs and total count efficiently
+    const [logs, totalCount] = await prisma.$transaction([
+      prisma.warningLog.findMany({
+        skip: skip,
+        take: size,
+        orderBy: {
+          createdAt: 'desc', // Show most recent first
+        },
+      }),
+      prisma.warningLog.count() // Get the total count of logs
+    ]);
+
+    console.log(`Fetched ${logs.length} logs out of ${totalCount} total.`);
+
+    return {
+      success: true,
+      message: "Fetched warning logs.",
+      logs,
+      totalCount,
+      page: pageNumber,
+      pageSize: size
+    };
   } catch (error) {
     console.error("Error fetching warning logs:", error);
     return { success: false, message: `An unexpected error occurred: ${error instanceof Error ? error.message : String(error)}` };
@@ -991,7 +1019,7 @@ interface AnalyticsStatusData {
   activeCount: number;
   belowThresholdCount: number;
   totalMembers: number;
-  // Add more metrics later if needed
+  activityDistribution?: { range: string; count: number }[]; // Add distribution data
 }
 
 export async function getAnalyticsData(): Promise<{
@@ -1038,6 +1066,8 @@ export async function getAnalyticsData(): Promise<{
     let activeCount = 0;
     let belowThresholdCount = 0;
     let processedCount = 0;
+    // Add counters for distribution bins
+    const distributionBins = { '0-2': 0, '3-5': 0, '6-8': 0, '9+': 0 };
 
     // --- Process Data --- 
     rawData.forEach((row) => {
@@ -1066,13 +1096,26 @@ export async function getAnalyticsData(): Promise<{
       } else {
         belowThresholdCount++;
       }
+
+      // Categorize for distribution chart
+      if (activityCount <= 2) distributionBins['0-2']++;
+      else if (activityCount <= 5) distributionBins['3-5']++;
+      else if (activityCount <= 8) distributionBins['6-8']++;
+      else distributionBins['9+']++;
     });
     // --- End Process Data --- 
+
+    // Format distribution data for recharts
+    const activityDistribution = Object.entries(distributionBins).map(([range, count]) => ({
+      range, // e.g., '0-2'
+      count, // e.g., 15
+    }));
 
     const analyticsData: AnalyticsStatusData = {
         activeCount,
         belowThresholdCount,
-        totalMembers: processedCount // Total based on rows with valid activity counts
+        totalMembers: processedCount, 
+        activityDistribution // Include formatted distribution data
     };
 
     return { success: true, message: "Fetched analytics data.", data: analyticsData };
