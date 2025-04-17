@@ -4,6 +4,9 @@ import { useSession, signIn, signOut } from "next-auth/react";
 import Image from "next/image";
 import EmailQueueManager from "@/components/EmailQueueManager";
 import ThresholdManager from "@/components/ThresholdManager"; // <-- Import the new component
+import WarningLogViewer from "@/components/WarningLogViewer"; // <-- Import the new component
+import AdminLogViewer from "@/components/AdminLogViewer"; // <-- Import the new component
+import AnalyticsViewer from "@/components/AnalyticsViewer"; // <-- Import the new component
 import MemberStatusPortal from "@/components/MemberStatusPortal"; // <-- Import the new portal component
 
 export default function Home() {
@@ -45,6 +48,15 @@ export default function Home() {
                  
                  {/* Threshold Manager */} 
                  <ThresholdManager /> 
+                 
+                 {/* Warning Log Viewer */} 
+                 <WarningLogViewer /> 
+
+                 {/* Admin Log Viewer */} 
+                 <AdminLogViewer />
+
+                 {/* Analytics Viewer */} 
+                 <AnalyticsViewer />
               </div>
             ) : (
               // --- MEMBER/GUEST VIEW --- 

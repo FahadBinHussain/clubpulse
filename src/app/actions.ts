@@ -2,7 +2,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { getSheetData } from '@/lib/googleSheets';
-import { EmailStatus, Role, RoleThreshold } from '@prisma/client';
+import { EmailStatus, Role, RoleThreshold, WarningLog, AdminLog } from '@prisma/client';
 import { sendEmail } from '@/lib/resend';
 import { CreateEmailResponse } from 'resend';
 import { getServerSession } from 'next-auth/next';
@@ -918,3 +918,168 @@ export async function getMemberStatus(): Promise<{
 }
 
 // --- End Member Status Action --- 
+
+// --- Server Action: Get Warning Logs --- 
+export async function getWarningLogs(): Promise<{
+  success: boolean;
+  message: string;
+  logs?: WarningLog[];
+}> {
+  console.log("Attempting to fetch warning logs...");
+
+  // --- Authorization Check --- 
+  const session = await getServerSession(authOptions);
+  if (!session || session.user?.role !== Role.PANEL) {
+    console.warn("Unauthorized attempt to fetch warning logs. User:", session?.user?.email);
+    return { success: false, message: "Unauthorized: You do not have permission to view logs." };
+  }
+  console.log(`Authorized user ${session.user.email} is fetching warning logs.`);
+  // --- End Authorization Check ---
+
+  try {
+    const logs = await prisma.warningLog.findMany({
+      orderBy: {
+        createdAt: 'desc', // Show most recent first
+      },
+      // Add pagination or filtering here later if needed
+      // take: 20, 
+      // skip: 0, 
+    });
+    return { success: true, message: "Fetched warning logs.", logs };
+  } catch (error) {
+    console.error("Error fetching warning logs:", error);
+    return { success: false, message: `An unexpected error occurred: ${error instanceof Error ? error.message : String(error)}` };
+  }
+}
+// --- End Get Warning Logs Action --- 
+
+// --- Server Action: Get Admin Logs --- 
+export async function getAdminLogs(): Promise<{
+  success: boolean;
+  message: string;
+  logs?: AdminLog[];
+}> {
+  console.log("Attempting to fetch admin logs...");
+
+  // --- Authorization Check --- 
+  const session = await getServerSession(authOptions);
+  if (!session || session.user?.role !== Role.PANEL) {
+    console.warn("Unauthorized attempt to fetch admin logs. User:", session?.user?.email);
+    return { success: false, message: "Unauthorized: You do not have permission to view admin logs." };
+  }
+  console.log(`Authorized user ${session.user.email} is fetching admin logs.`);
+  // --- End Authorization Check ---
+
+  try {
+    const logs = await prisma.adminLog.findMany({
+      orderBy: {
+        timestamp: 'desc', // Show most recent first
+      },
+      // Add pagination later if needed
+      // take: 50, 
+    });
+    return { success: true, message: "Fetched admin logs.", logs };
+  } catch (error) {
+    console.error("Error fetching admin logs:", error);
+    return { success: false, message: `An unexpected error occurred: ${error instanceof Error ? error.message : String(error)}` };
+  }
+}
+// --- End Get Admin Logs Action --- 
+
+// --- Server Action: Get Analytics Data --- 
+interface AnalyticsStatusData {
+  activeCount: number;
+  belowThresholdCount: number;
+  totalMembers: number;
+  // Add more metrics later if needed
+}
+
+export async function getAnalyticsData(): Promise<{
+  success: boolean;
+  message: string;
+  data?: AnalyticsStatusData;
+}> {
+  console.log("Attempting to fetch analytics data...");
+
+  // --- Authorization Check --- 
+  const session = await getServerSession(authOptions);
+  if (!session || session.user?.role !== Role.PANEL) {
+    console.warn("Unauthorized attempt to fetch analytics data. User:", session?.user?.email);
+    return { success: false, message: "Unauthorized: You do not have permission."};
+  }
+  console.log(`Authorized user ${session.user.email} is fetching analytics data.`);
+  // --- End Authorization Check ---
+
+  // Check if the range is configured
+  if (!sheetMemberDataRange) {
+    console.error("GOOGLE_SHEET_MEMBER_DATA_RANGE environment variable is not set.");
+    return { success: false, message: "Member data sheet range is not configured." };
+  }
+
+  try {
+    // --- Fetch Role Thresholds --- 
+    const thresholdsFromDb = await prisma.roleThreshold.findMany();
+    const roleThresholds: Map<string, number> = new Map();
+    thresholdsFromDb.forEach(rt => {
+      roleThresholds.set(rt.roleName.toLowerCase(), rt.threshold);
+    });
+    // --- End Fetch Thresholds ---
+
+    // --- Fetch Sheet Data --- 
+    const rawData = await getSheetData(sheetMemberDataRange);
+    if (rawData === null) {
+      return { success: false, message: "Failed to fetch data from Google Sheet." };
+    }
+    if (rawData.length === 0) {
+        return { success: true, message: "No member data found.", data: { activeCount: 0, belowThresholdCount: 0, totalMembers: 0 } };
+    }
+    // --- End Fetch Sheet Data ---
+
+    let activeCount = 0;
+    let belowThresholdCount = 0;
+    let processedCount = 0;
+
+    // --- Process Data --- 
+    rawData.forEach((row) => {
+      const activityCountValue = row[COLUMN_INDICES.ACTIVITY_COUNT];
+      const roleValue = row[COLUMN_INDICES.ROLE];
+
+      // Basic validation (simplified for analytics - might need refinement)
+      let activityCount = 0;
+      if (typeof activityCountValue === 'number') {
+        activityCount = activityCountValue;
+      } else if (typeof activityCountValue === 'string') {
+        const parsed = parseInt(activityCountValue, 10);
+        if (!isNaN(parsed)) activityCount = parsed;
+      } else { 
+          return; // Skip row if activity count is invalid type
+      }
+
+      processedCount++; // Count rows with valid activity counts
+
+      const role = typeof roleValue === 'string' ? roleValue.trim().toLowerCase() : '';
+      const specificThreshold = roleThresholds.get(role);
+      const effectiveThreshold = specificThreshold !== undefined ? specificThreshold : DEFAULT_ACTIVITY_THRESHOLD;
+      
+      if (activityCount >= effectiveThreshold) {
+        activeCount++;
+      } else {
+        belowThresholdCount++;
+      }
+    });
+    // --- End Process Data --- 
+
+    const analyticsData: AnalyticsStatusData = {
+        activeCount,
+        belowThresholdCount,
+        totalMembers: processedCount // Total based on rows with valid activity counts
+    };
+
+    return { success: true, message: "Fetched analytics data.", data: analyticsData };
+
+  } catch (error) {
+    console.error("Error fetching analytics data:", error);
+    return { success: false, message: `An unexpected error occurred: ${error instanceof Error ? error.message : String(error)}` };
+  }
+}
+// --- End Get Analytics Data Action --- 
