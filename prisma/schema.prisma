@@ -58,8 +58,9 @@ model User {
   email         String?   @unique
   emailVerified DateTime?
   image         String?
-  role          Role      @default(GUEST) // Changed default to GUEST
-  lastSeen      DateTime? @updatedAt      // Added field for last seen timestamp
+  role          Role      @default(GUEST) // Broad role for access control
+  specificRole  String?   // Store the actual role string from the sheet (e.g., "Executive")
+  lastSeen      DateTime? @updatedAt
 
   accounts Account[]
   sessions Session[]

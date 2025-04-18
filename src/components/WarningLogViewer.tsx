@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useTransition } from 'react';
+import { useState, useEffect, useTransition, useCallback } from 'react';
 import { getWarningLogs } from '@/app/actions';
 import { WarningLog, EmailStatus } from '@prisma/client'; // Import WarningLog type
 
@@ -30,35 +30,49 @@ const getStatusBadgeClass = (status: EmailStatus): string => {
   }
 };
 
+// --- Types for sorting --- 
+type SortField = 'createdAt' | 'activityCount' | 'recipientName' | 'status';
+type SortDirection = 'asc' | 'desc';
+type SortOption = `${SortField}_${SortDirection}`;
+
+// --- Sort Component --- 
+const SortIcon = ({ direction }: { direction: SortDirection | null }) => {
+  if (!direction) return null;
+  return direction === 'asc' ? <span className="ml-1">▲</span> : <span className="ml-1">▼</span>;
+};
+
 export default function WarningLogViewer() {
   const [logs, setLogs] = useState<WarningLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isFetching, startFetchingTransition] = useTransition();
   
-  // Pagination state
+  // State for pagination, filtering, and sorting
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+  const [filterStatus, setFilterStatus] = useState<EmailStatus | null>(null);
+  const [sortBy, setSortBy] = useState<SortOption>('createdAt_desc'); // Default sort
+  
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
-  // Fetch logs function
-  const fetchLogs = (page: number) => {
+  // Fetch logs function - useCallback to stabilize
+  const fetchLogs = useCallback((page: number, status: EmailStatus | null, sort: SortOption) => {
     startFetchingTransition(async () => {
       setIsLoading(true);
       setError(null);
       try {
-        const result = await getWarningLogs(page, PAGE_SIZE); // Pass page and size
+        const result = await getWarningLogs(page, PAGE_SIZE, status, sort); 
         if (result.success && result.logs) {
-          // Ensure dates are Date objects
           const logsWithDates = result.logs.map(log => ({ 
             ...log, 
             createdAt: new Date(log.createdAt), 
             emailSentAt: log.emailSentAt ? new Date(log.emailSentAt) : null,
-            // emailOpenedAt needs to be handled similarly if added to the model/action
           }));
           setLogs(logsWithDates);
-          setTotalCount(result.totalCount || 0); // Update total count
-          setCurrentPage(result.page || 1); // Update current page from result
+          setTotalCount(result.totalCount || 0);
+          setCurrentPage(result.page || 1);
+          setFilterStatus(result.filterStatus ?? null); // Update state from response
+          setSortBy(result.sortBy as SortOption ?? 'createdAt_desc'); // Update state from response
         } else {
           setError(result.message || "Failed to fetch logs.");
           setLogs([]);
@@ -73,43 +87,95 @@ export default function WarningLogViewer() {
         setIsLoading(false);
       }
     });
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Dependencies: none needed due to how it's called
 
   // Initial fetch
   useEffect(() => {
-    fetchLogs(currentPage); 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Fetch only on mount initially
+    fetchLogs(currentPage, filterStatus, sortBy); 
+  }, [fetchLogs]); // Run fetchLogs once on mount
 
+  // --- Handlers for UI controls --- 
   const handlePageChange = (newPage: number) => {
     if (newPage >= 1 && newPage <= totalPages && newPage !== currentPage) {
-      fetchLogs(newPage);
+      fetchLogs(newPage, filterStatus, sortBy);
     }
   };
+
+  const handleFilterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newStatus = e.target.value ? e.target.value as EmailStatus : null;
+    setFilterStatus(newStatus);
+    setCurrentPage(1); // Reset to page 1 when filter changes
+    fetchLogs(1, newStatus, sortBy);
+  };
+
+  const handleSortChange = (field: SortField) => {
+    const currentField = sortBy.split('_')[0];
+    const currentDirection = sortBy.split('_')[1] as SortDirection;
+    let newDirection: SortDirection = 'desc';
+    if (field === currentField && currentDirection === 'desc') {
+      newDirection = 'asc';
+    }
+    const newSortBy = `${field}_${newDirection}` as SortOption;
+    setSortBy(newSortBy);
+    setCurrentPage(1); // Reset to page 1 when sort changes
+    fetchLogs(1, filterStatus, newSortBy);
+  };
+  // --- End Handlers --- 
 
   return (
     <div className="mt-6 p-4 border rounded-lg shadow-md w-full max-w-4xl flex flex-col gap-4">
       <h2 className="text-xl font-semibold">Warning Logs</h2>
 
+      {/* --- Filter Controls --- */} 
+      <div className="flex items-center gap-4 text-sm">
+          <label htmlFor="statusFilter" className="font-medium text-gray-700">Filter by Status:</label>
+          <select 
+            id="statusFilter"
+            value={filterStatus || ''}
+            onChange={handleFilterChange}
+            disabled={isFetching}
+            className="p-1 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+          >
+            <option value="">All Statuses</option>
+            {Object.values(EmailStatus).map(status => (
+              <option key={status} value={status}>{status}</option>
+            ))}
+          </select>
+      </div>
+      {/* --- End Filter Controls --- */} 
+
       {isLoading && <p>Loading logs...</p>}
       {error && <p className="text-red-600">Error: {error}</p>}
 
       {!isLoading && !error && logs.length === 0 && (
-        <p>No warning logs found.</p>
+        <p>No warning logs found{filterStatus ? ` with status '${filterStatus}'` : ''}.</p>
       )}
 
-      {/* Log Table (Responsive) */} 
+      {/* --- Log Table (Responsive) --- */} 
       {!isLoading && !error && logs.length > 0 && (
         <div className="overflow-x-auto border border-gray-200 rounded-md">
           <table className="min-w-full divide-y divide-gray-200 text-sm">
             <thead className="bg-gray-50">
               <tr>
-                <th scope="col" className="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider">Recipient</th>
+                <th scope="col" className="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSortChange('recipientName')}>
+                  Recipient
+                  {sortBy.startsWith('recipientName') && <SortIcon direction={sortBy.endsWith('asc') ? 'asc' : 'desc'} />}
+                </th>
                 <th scope="col" className="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">Template</th>
-                <th scope="col" className="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider">Activity</th>
-                <th scope="col" className="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider">Threshold</th>
-                <th scope="col" className="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th scope="col" className="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">Logged At</th>
+                <th scope="col" className="px-3 py-2 text-center font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSortChange('activityCount')}>
+                  Activity
+                  {sortBy.startsWith('activityCount') && <SortIcon direction={sortBy.endsWith('asc') ? 'asc' : 'desc'} />}
+                </th>
+                <th scope="col" className="px-3 py-2 text-center font-medium text-gray-500 uppercase tracking-wider">Threshold</th>
+                <th scope="col" className="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSortChange('status')}>
+                  Status
+                  {sortBy.startsWith('status') && <SortIcon direction={sortBy.endsWith('asc') ? 'asc' : 'desc'} />}
+                </th>
+                <th scope="col" className="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell cursor-pointer hover:bg-gray-100" onClick={() => handleSortChange('createdAt')}>
+                  Logged At
+                  {sortBy.startsWith('createdAt') && <SortIcon direction={sortBy.endsWith('asc') ? 'asc' : 'desc'} />}
+                </th>
                 <th scope="col" className="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">Sent At</th>
                 <th scope="col" className="px-3 py-2 text-center font-medium text-gray-500 uppercase tracking-wider">Opened?</th>
               </tr>
@@ -144,10 +210,9 @@ export default function WarningLogViewer() {
         </div>
       )}
       
-      {/* Pagination Controls */} 
+      {/* --- Pagination Controls --- */} 
       {!isLoading && !error && totalPages > 1 && (
           <div className="flex justify-between items-center mt-4 text-sm">
-              {/* Previous Button */} 
               <button 
                 onClick={() => handlePageChange(currentPage - 1)}
                 disabled={currentPage <= 1 || isFetching}
@@ -155,13 +220,9 @@ export default function WarningLogViewer() {
               >
                 &larr; Previous
               </button>
-
-              {/* Page Info */} 
               <span className="text-gray-600">
                 Page {currentPage} of {totalPages} (Total: {totalCount})
               </span>
-              
-              {/* Next Button */} 
               <button 
                 onClick={() => handlePageChange(currentPage + 1)}
                 disabled={currentPage >= totalPages || isFetching}

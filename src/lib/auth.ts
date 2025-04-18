@@ -30,7 +30,8 @@ export const authOptions: NextAuthOptions = {
           name: profile.name,
           email: profile.email,
           image: profile.picture,
-          role: Role.GUEST
+          role: Role.GUEST,
+          specificRole: null,
         };
       },
     }),
@@ -44,6 +45,7 @@ export const authOptions: NextAuthOptions = {
       }
       const userEmailLower = user.email.toLowerCase();
       let correctRole: Role = Role.GUEST; // Default to GUEST
+      let specificRoleFromSheet: string | null = null; // Initialize specific role
 
       try {
         // REMOVED: Logic for checking separate panel sheet range
@@ -57,40 +59,46 @@ export const authOptions: NextAuthOptions = {
             let userFound = false;
             for (const row of memberData) {
               const sheetEmail = row && String(row[MEMBER_EMAIL_COLUMN_INDEX]).trim().toLowerCase();
-              const sheetRole = row && String(row[MEMBER_ROLE_COLUMN_INDEX]).trim().toLowerCase(); // Get role from Col D
+              const sheetRoleRaw = row && String(row[MEMBER_ROLE_COLUMN_INDEX]).trim(); // Get raw role string
+              const sheetRoleLower = sheetRoleRaw.toLowerCase();
 
               if (sheetEmail === userEmailLower) {
                 userFound = true;
-                if (panelRolesList.includes(sheetRole)) {
+                specificRoleFromSheet = sheetRoleRaw; // Store the exact role string from the sheet
+                
+                if (panelRolesList.includes(sheetRoleLower)) {
                   correctRole = Role.PANEL;
-                  console.log(`User ${user.email} found in member sheet with PANEL role: ${sheetRole}.`);
+                  console.log(`User ${user.email} found in member sheet with PANEL role: ${specificRoleFromSheet}.`);
                 } else {
                   correctRole = Role.MEMBER;
-                  console.log(`User ${user.email} found in member sheet with MEMBER role: ${sheetRole}.`);
+                  console.log(`User ${user.email} found in member sheet with MEMBER role: ${specificRoleFromSheet}.`);
                 }
                 break; // Stop searching once user is found
               }
             }
             if (!userFound) {
                console.log(`User ${user.email} not found in member sheet, assigning GUEST role.`);
-               // correctRole remains GUEST
+               // correctRole remains GUEST, specificRoleFromSheet remains null
             }
           } else {
             console.error("Failed to fetch member data during signIn event. Assigning GUEST role.");
-             // correctRole remains GUEST
+             // correctRole remains GUEST, specificRoleFromSheet remains null
           }
         } else {
           console.warn("Member sheet range not configured. Cannot determine role. Assigning GUEST role.");
-          // correctRole remains GUEST
+          // correctRole remains GUEST, specificRoleFromSheet remains null
         }
 
-        // Update user role in database regardless of whether they were found or not
-        console.log(`Final determined role: ${correctRole}. Updating database...`);
+        // Update user role and specificRole in database
+        console.log(`Final determined role: ${correctRole}, Specific Role: ${specificRoleFromSheet || 'None'}. Updating database...`);
         await prisma.user.update({
           where: { email: user.email },
-          data: { role: correctRole },
+          data: { 
+            role: correctRole, 
+            specificRole: specificRoleFromSheet // Save the specific role string (or null)
+          },
         });
-        console.log(`Database role updated to ${correctRole} for ${user.email}`);
+        console.log(`Database roles updated for ${user.email}: Role=${correctRole}, SpecificRole=${specificRoleFromSheet || 'null'}`);
 
       } catch (error) {
         console.error(`Error during role sync in signIn event for ${user.email}:`, error);
@@ -102,9 +110,29 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         session.user.id = user.id;
         session.user.role = user.role;
+        session.user.specificRole = user.specificRole;
       }
       return session;
     },
   },
   secret: process.env.NEXTAUTH_SECRET,
 }; 
+
+// Extend the default User and Session types for TypeScript
+declare module 'next-auth' {
+  interface Session {
+    user?: {
+      id: string;
+      name?: string | null;
+      email?: string | null;
+      image?: string | null;
+      role: Role; // Keep the broad role
+      specificRole?: string | null; // Add the specific role
+    };
+  }
+
+  interface User {
+    role: Role; // Keep the broad role
+    specificRole?: string | null; // Add the specific role
+  }
+} 

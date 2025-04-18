@@ -921,7 +921,11 @@ export async function getMemberStatus(): Promise<{
 
 // --- Server Action: Get Warning Logs --- 
 
-// Define return type with pagination info
+// Define valid sortable fields and directions
+const validSortFields = ['createdAt', 'activityCount', 'recipientName', 'status'];
+const validSortDirections = ['asc', 'desc'];
+
+// Define return type with pagination, filter, and sort info
 interface WarningLogResponse {
   success: boolean;
   message: string;
@@ -929,13 +933,17 @@ interface WarningLogResponse {
   totalCount?: number;
   page?: number;
   pageSize?: number;
+  filterStatus?: EmailStatus | null; // Track applied filter
+  sortBy?: string | null; // Track applied sort
 }
 
 export async function getWarningLogs(
-  page: number = 1,      // Default to page 1
-  pageSize: number = 10  // Default page size
+  page: number = 1,
+  pageSize: number = 10,
+  filterStatus?: EmailStatus | null, // Optional status filter
+  sortBy?: string | null // Optional sort string (e.g., "createdAt_desc")
 ): Promise<WarningLogResponse> {
-  console.log(`Attempting to fetch warning logs (Page: ${page}, Size: ${pageSize})...`);
+  console.log(`Attempting to fetch warning logs (Page: ${page}, Size: ${pageSize}, Filter: ${filterStatus || 'None'}, Sort: ${sortBy || 'Default'})...`);
 
   // --- Authorization Check --- 
   const session = await getServerSession(authOptions);
@@ -948,23 +956,46 @@ export async function getWarningLogs(
 
   try {
     // Validate page and pageSize
-    const pageNumber = Math.max(1, page); // Ensure page is at least 1
-    const size = Math.max(1, Math.min(50, pageSize)); // Ensure pageSize is between 1 and 50
+    const pageNumber = Math.max(1, page);
+    const size = Math.max(1, Math.min(50, pageSize));
     const skip = (pageNumber - 1) * size;
 
-    // Use transaction to get both logs and total count efficiently
+    // --- Build Prisma Query Conditions --- 
+    const whereClause: any = {};
+    if (filterStatus && Object.values(EmailStatus).includes(filterStatus)) {
+        whereClause.status = filterStatus;
+        console.log(`Applying filter: status = ${filterStatus}`);
+    }
+
+    const orderByClause: any = {};
+    if (sortBy) {
+        const [field, direction] = sortBy.split('_');
+        if (validSortFields.includes(field) && validSortDirections.includes(direction)) {
+            orderByClause[field] = direction;
+            console.log(`Applying sort: ${field} ${direction}`);
+        } else {
+            console.warn(`Invalid sortBy parameter: ${sortBy}. Using default sort.`);
+            orderByClause['createdAt'] = 'desc'; // Default sort
+            sortBy = 'createdAt_desc'; // Reflect default in response
+        }
+    } else {
+        orderByClause['createdAt'] = 'desc'; // Default sort if none provided
+        sortBy = 'createdAt_desc'; // Reflect default in response
+    }
+    // --- End Build Prisma Query Conditions --- 
+
+    // Use transaction to get logs and total count with filters
     const [logs, totalCount] = await prisma.$transaction([
       prisma.warningLog.findMany({
+        where: whereClause, // Apply filter
         skip: skip,
         take: size,
-        orderBy: {
-          createdAt: 'desc', // Show most recent first
-        },
+        orderBy: orderByClause, // Apply sort
       }),
-      prisma.warningLog.count() // Get the total count of logs
+      prisma.warningLog.count({ where: whereClause }) // Count needs to respect the filter
     ]);
 
-    console.log(`Fetched ${logs.length} logs out of ${totalCount} total.`);
+    console.log(`Fetched ${logs.length} logs out of ${totalCount} total (matching filter).`);
 
     return {
       success: true,
@@ -972,7 +1003,9 @@ export async function getWarningLogs(
       logs,
       totalCount,
       page: pageNumber,
-      pageSize: size
+      pageSize: size,
+      filterStatus: filterStatus, // Return applied filter
+      sortBy: sortBy          // Return applied sort
     };
   } catch (error) {
     console.error("Error fetching warning logs:", error);
@@ -982,12 +1015,32 @@ export async function getWarningLogs(
 // --- End Get Warning Logs Action --- 
 
 // --- Server Action: Get Admin Logs --- 
-export async function getAdminLogs(): Promise<{
+
+// Define valid sortable fields and directions for Admin Logs
+const validAdminSortFields = ['timestamp', 'adminUserEmail', 'action'];
+// validSortDirections is already defined above
+
+// Define return type with pagination, filter, and sort info
+interface AdminLogResponse {
   success: boolean;
   message: string;
   logs?: AdminLog[];
-}> {
-  console.log("Attempting to fetch admin logs...");
+  totalCount?: number;
+  page?: number;
+  pageSize?: number;
+  filterUserEmail?: string | null;
+  filterAction?: string | null;
+  sortBy?: string | null;
+}
+
+export async function getAdminLogs(
+  page: number = 1,
+  pageSize: number = 10,
+  filterUserEmail?: string | null,
+  filterAction?: string | null,
+  sortBy?: string | null
+): Promise<AdminLogResponse> {
+  console.log(`Attempting to fetch admin logs (Page: ${page}, Size: ${pageSize}, Filter User: ${filterUserEmail || 'None'}, Filter Action: ${filterAction || 'None'}, Sort: ${sortBy || 'Default'})...`);
 
   // --- Authorization Check --- 
   const session = await getServerSession(authOptions);
@@ -999,14 +1052,64 @@ export async function getAdminLogs(): Promise<{
   // --- End Authorization Check ---
 
   try {
-    const logs = await prisma.adminLog.findMany({
-      orderBy: {
-        timestamp: 'desc', // Show most recent first
-      },
-      // Add pagination later if needed
-      // take: 50, 
-    });
-    return { success: true, message: "Fetched admin logs.", logs };
+    // Validate pagination
+    const pageNumber = Math.max(1, page);
+    const size = Math.max(1, Math.min(50, pageSize));
+    const skip = (pageNumber - 1) * size;
+
+    // --- Build Prisma Query Conditions --- 
+    const whereClause: any = {};
+    if (filterUserEmail) {
+        // Use 'contains' for partial matching, or 'equals' for exact match
+        whereClause.adminUserEmail = { contains: filterUserEmail, mode: 'insensitive' }; // Case-insensitive partial match
+        console.log(`Applying filter: adminUserEmail contains ${filterUserEmail}`);
+    }
+    if (filterAction) {
+        whereClause.action = { contains: filterAction, mode: 'insensitive' }; // Case-insensitive partial match
+        console.log(`Applying filter: action contains ${filterAction}`);
+    }
+
+    const orderByClause: any = {};
+    if (sortBy) {
+        const [field, direction] = sortBy.split('_');
+        if (validAdminSortFields.includes(field) && validSortDirections.includes(direction)) {
+            orderByClause[field] = direction;
+            console.log(`Applying sort: ${field} ${direction}`);
+        } else {
+            console.warn(`Invalid sortBy parameter for admin logs: ${sortBy}. Using default sort.`);
+            orderByClause['timestamp'] = 'desc'; // Default sort
+            sortBy = 'timestamp_desc'; // Reflect default in response
+        }
+    } else {
+        orderByClause['timestamp'] = 'desc'; // Default sort if none provided
+        sortBy = 'timestamp_desc'; // Reflect default in response
+    }
+    // --- End Build Prisma Query Conditions --- 
+
+    // Use transaction to get logs and total count with filters
+    const [logs, totalCount] = await prisma.$transaction([
+      prisma.adminLog.findMany({
+        where: whereClause,
+        skip: skip,
+        take: size,
+        orderBy: orderByClause,
+      }),
+      prisma.adminLog.count({ where: whereClause })
+    ]);
+
+    console.log(`Fetched ${logs.length} admin logs out of ${totalCount} total (matching filter).`);
+
+    return {
+      success: true,
+      message: "Fetched admin logs.",
+      logs,
+      totalCount,
+      page: pageNumber,
+      pageSize: size,
+      filterUserEmail,
+      filterAction,
+      sortBy
+    };
   } catch (error) {
     console.error("Error fetching admin logs:", error);
     return { success: false, message: `An unexpected error occurred: ${error instanceof Error ? error.message : String(error)}` };

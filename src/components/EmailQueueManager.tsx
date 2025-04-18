@@ -4,6 +4,7 @@ import { useState, useEffect, useTransition, useCallback } from 'react';
 import Pusher from 'pusher-js';
 import { getEmailQueue, updateEmailStatus, checkMemberActivity, getEmailBodyHtml } from '@/app/actions';
 import { EmailStatus } from '@prisma/client';
+import { CheckCircleIcon, XCircleIcon, EyeIcon, ArrowPathIcon, ExclamationTriangleIcon } from '@/components/icons'; // Assume you have an icons component
 
 interface QueuedEmail {
   id: string;
@@ -189,69 +190,80 @@ export default function EmailQueueManager() {
     <div className="mt-6 p-4 border rounded-lg shadow-md w-full max-w-4xl flex flex-col gap-4 relative">
       {/* --- Email Queue Section --- */}
       <div className="w-full">
-        <div className="flex justify-between items-center mb-2">
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-2 mb-4 border-b pb-3">
           <h2 className="text-xl font-semibold">Email Approval Queue</h2>
           <button 
             onClick={handleCheckAndRefresh}
             disabled={isLoading || isUpdating || isChecking}
-            className="px-3 py-1 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-300 disabled:opacity-50"
+            className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-60 transition-colors duration-150"
           >
-            {isChecking ? "Checking Sheet..." : "Check Sheet & Queue"}
+            {isChecking ? (
+                 <> <ArrowPathIcon className="animate-spin h-4 w-4 mr-2" /> Checking Sheet...</> 
+             ) : (
+                 <> <ArrowPathIcon className="h-4 w-4 mr-2" /> Check Sheet & Queue </>
+             )}
           </button>
         </div>
 
-        {checkMessage && <p className={`text-sm mb-2 ${checkMessage.includes("Failed") || checkMessage.includes("Error") ? 'text-red-600' : 'text-blue-600'}`}>{checkMessage}</p>}
+        {/* Messages Area */} 
+        <div className="min-h-[20px] mb-3">
+          {checkMessage && <p className={`text-sm ${checkMessage.includes("Failed") || checkMessage.includes("Error") ? 'text-red-600' : 'text-blue-600'}`}>{checkMessage}</p>}
+          {updateMessage && <p className={`text-sm ${updateMessage.includes("Failed") || updateMessage.includes("Error") ? 'text-red-600' : 'text-green-600'}`}>{updateMessage}</p>}
+          {error && <p className="text-red-600 text-sm">Error fetching queue: {error}</p>}
+        </div>
 
-        {isLoading && <p>Loading email queue...</p>}
-        {error && <p className="text-red-600">Error fetching queue: {error}</p>}
-        {updateMessage && <p className={`text-sm mb-2 ${updateMessage.includes("Failed") || updateMessage.includes("Error") ? 'text-red-600' : 'text-blue-600'}`}>{updateMessage}</p>}
+        {isLoading && <p className="text-center text-gray-500 py-4">Loading email queue...</p>}
 
         {/* --- Responsive Email Queue Display --- */}
         {!isLoading && !error && queuedEmails.length === 0 && (
-          <p>No emails currently pending approval.</p>
+          <p className="text-center text-gray-500 py-4">No emails currently pending approval.</p>
         )}
         
         {/* Table for Medium screens and up */} 
         {!isLoading && !error && queuedEmails.length > 0 && (
           <div className="hidden md:block overflow-x-auto border border-gray-200 rounded-md">
             <table className="min-w-full divide-y divide-gray-200">
-              {/* Make thead sticky */} 
-              <thead className="bg-gray-50 sticky top-0 z-10"> 
+              <thead className="bg-gray-100"> 
                 <tr>
-                  <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Recipient</th>
-                  <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subject</th>
-                  <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Queued At</th>
-                  {/* Make Actions header sticky */} 
-                  <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky right-0 bg-gray-50">Actions</th> 
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">Recipient</th>
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">Subject</th>
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">Queued At</th>
+                  <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-600 uppercase tracking-wider">Actions</th> 
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {queuedEmails.map((email) => (
-                  <tr key={email.id}>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700">{email.recipientName || 'N/A'} ({email.recipientEmail})</td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700">{email.subject}</td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{email.createdAt.toLocaleString()}</td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm font-medium space-x-2 sticky right-0 bg-white">
+                  <tr key={email.id} className="hover:bg-gray-50 transition-colors duration-150">
+                    <td className="px-4 py-3 whitespace-nowrap text-sm">
+                        <div className="text-gray-800 font-medium">{email.recipientName || 'N/A'}</div>
+                        <div className="text-gray-500 text-xs">{email.recipientEmail}</div>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">{email.subject}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{email.createdAt.toLocaleString()}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-center space-x-2">
                        <button
                         onClick={() => handlePreview(email.id)}
                         disabled={isUpdating || isChecking || isPreviewing}
-                        className="text-blue-600 hover:text-blue-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Preview Email"
+                        className="inline-flex items-center p-1 text-blue-600 hover:text-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150"
                       >
-                        {isPreviewing && currentPreviewEmailId === email.id ? "Loading..." : "Preview"}
+                        <EyeIcon className="h-5 w-5" />
                       </button>
                       <button
                         onClick={() => handleUpdate(email.id, EmailStatus.APPROVED)}
                         disabled={isUpdating || isChecking || isPreviewing}
-                        className="text-green-600 hover:text-green-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Approve Email"
+                        className="inline-flex items-center p-1 text-green-600 hover:text-green-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150"
                       >
-                        Approve
+                        <CheckCircleIcon className="h-5 w-5" />
                       </button>
                       <button
                         onClick={() => handleUpdate(email.id, EmailStatus.CANCELED)}
                         disabled={isUpdating || isChecking || isPreviewing}
-                        className="text-red-600 hover:text-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Cancel Email"
+                        className="inline-flex items-center p-1 text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150"
                       >
-                        Cancel
+                        <XCircleIcon className="h-5 w-5" />
                       </button>
                     </td>
                   </tr>
@@ -267,7 +279,8 @@ export default function EmailQueueManager() {
             {queuedEmails.map((email) => (
               <div key={email.id} className="p-3 border rounded-lg shadow-sm bg-white text-sm">
                 <div className="mb-2">
-                  <span className="font-medium text-gray-700">Recipient:</span> {email.recipientName || 'N/A'} ({email.recipientEmail})
+                  <div className="font-medium text-gray-800">{email.recipientName || 'N/A'}</div>
+                  <div className="text-gray-500 text-xs">{email.recipientEmail}</div>
                 </div>
                 <div className="mb-2">
                   <span className="font-medium text-gray-700">Subject:</span> {email.subject}
@@ -275,27 +288,30 @@ export default function EmailQueueManager() {
                 <div className="mb-3 text-xs text-gray-500">
                   <span className="font-medium">Queued:</span> {email.createdAt.toLocaleString()}
                 </div>
-                <div className="flex justify-end space-x-3 border-t pt-2">
+                <div className="flex justify-end space-x-3 border-t border-gray-100 pt-2">
                    <button
                     onClick={() => handlePreview(email.id)}
                     disabled={isUpdating || isChecking || isPreviewing}
-                    className="text-blue-600 hover:text-blue-900 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                    title="Preview Email"
+                    className="inline-flex items-center p-1 text-blue-600 hover:text-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150"
                   >
-                    {isPreviewing && currentPreviewEmailId === email.id ? "Loading..." : "Preview"}
+                    <EyeIcon className="h-5 w-5" />
                   </button>
                   <button
                     onClick={() => handleUpdate(email.id, EmailStatus.APPROVED)}
                     disabled={isUpdating || isChecking || isPreviewing}
-                    className="text-green-600 hover:text-green-900 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                    title="Approve Email"
+                    className="inline-flex items-center p-1 text-green-600 hover:text-green-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150"
                   >
-                    Approve
+                    <CheckCircleIcon className="h-5 w-5" />
                   </button>
                   <button
                     onClick={() => handleUpdate(email.id, EmailStatus.CANCELED)}
                     disabled={isUpdating || isChecking || isPreviewing}
-                    className="text-red-600 hover:text-red-900 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                    title="Cancel Email"
+                    className="inline-flex items-center p-1 text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150"
                   >
-                    Cancel
+                    <XCircleIcon className="h-5 w-5" />
                   </button>
                 </div>
               </div>
@@ -306,31 +322,33 @@ export default function EmailQueueManager() {
 
       {/* --- Responsive Sheet Errors Section --- */}
       {sheetErrors.length > 0 && (
-        <div className="mt-4 pt-4 border-t w-full">
-          <h3 className="text-lg font-semibold text-red-700 mb-2">Sheet Validation Errors ({sheetErrors.length})</h3>
-          <p className="text-sm text-gray-600 mb-2">The following rows in the Google Sheet could not be processed. Please correct them and run the check again.</p>
+        <div className="mt-6 pt-4 border-t border-red-200 w-full bg-red-50 p-4 rounded-lg">
+          <h3 className="text-lg font-semibold text-red-800 mb-2 flex items-center">
+              <ExclamationTriangleIcon className="h-5 w-5 mr-2 text-red-600" /> 
+              Sheet Validation Errors ({sheetErrors.length})
+          </h3>
+          <p className="text-sm text-red-700 mb-3">The following rows in the Google Sheet could not be processed. Please correct them and run the check again.</p>
           
           {/* Table for Medium screens and up */} 
-          <div className="hidden md:block overflow-x-auto max-h-60 border rounded-md">
-            <table className="min-w-full divide-y divide-gray-200 text-sm">
-              {/* ... existing error table thead ... */} 
-               <thead className="bg-red-50 sticky top-0">
+          <div className="hidden md:block overflow-x-auto max-h-60 border border-red-300 rounded-md bg-white shadow-sm">
+            <table className="min-w-full divide-y divide-red-200 text-sm">
+               <thead className="bg-red-100 sticky top-0">
                 <tr>
-                  <th scope="col" className="px-3 py-2 text-left font-medium text-red-800 uppercase tracking-wider">Row</th>
-                  <th scope="col" className="px-3 py-2 text-left font-medium text-red-800 uppercase tracking-wider">Name (from Sheet)</th>
-                  <th scope="col" className="px-3 py-2 text-left font-medium text-red-800 uppercase tracking-wider">Reason</th>
-                  <th scope="col" className="px-3 py-2 text-left font-medium text-red-800 uppercase tracking-wider">Raw Row Data</th>
+                  <th scope="col" className="px-3 py-2 text-left font-medium text-red-900 uppercase tracking-wider">Row</th>
+                  <th scope="col" className="px-3 py-2 text-left font-medium text-red-900 uppercase tracking-wider">Name (from Sheet)</th>
+                  <th scope="col" className="px-3 py-2 text-left font-medium text-red-900 uppercase tracking-wider">Reason</th>
+                  <th scope="col" className="px-3 py-2 text-left font-medium text-red-900 uppercase tracking-wider">Raw Row Data</th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-white divide-y divide-red-100">
                 {sheetErrors.map((err) => {
                   const nameFromSheet = typeof err.rowData?.[0] === 'string' ? err.rowData[0] : 'N/A';
                   return (
-                    <tr key={err.rowIndex} className="hover:bg-red-50">
+                    <tr key={err.rowIndex} className="hover:bg-red-50 transition-colors duration-150">
                       <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-900">{err.rowIndex}</td>
                       <td className="px-3 py-2 whitespace-nowrap text-gray-700">{nameFromSheet}</td>
-                      <td className="px-3 py-2 whitespace-nowrap text-red-700">{err.reason}</td>
-                      <td className="px-3 py-2 whitespace-nowrap text-gray-500 font-mono">{JSON.stringify(err.rowData)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap text-red-800 font-medium">{err.reason}</td>
+                      <td className="px-3 py-2 whitespace-nowrap text-gray-500 font-mono text-xs">{JSON.stringify(err.rowData)}</td>
                     </tr>
                   );
                 })}
@@ -339,7 +357,7 @@ export default function EmailQueueManager() {
           </div>
           
           {/* Cards for Small screens */} 
-          <div className="block md:hidden space-y-2 max-h-60 overflow-y-auto border rounded-md p-2 bg-red-50">
+          <div className="block md:hidden space-y-2 max-h-60 overflow-y-auto border border-red-300 rounded-md p-2 bg-white shadow-sm">
             {sheetErrors.map((err) => {
               const nameFromSheet = typeof err.rowData?.[0] === 'string' ? err.rowData[0] : 'N/A';
               return (
@@ -348,9 +366,9 @@ export default function EmailQueueManager() {
                     <span className="text-gray-700">Row:</span> <span className="text-gray-900">{err.rowIndex}</span> | <span className="text-gray-700">Name:</span> <span className="text-gray-900">{nameFromSheet}</span>
                   </div>
                   <div className="mb-1">
-                    <span className="font-medium text-red-700">Reason:</span> <span className="text-red-800">{err.reason}</span>
+                    <span className="font-medium text-red-700">Reason:</span> <span className="text-red-800 font-medium">{err.reason}</span>
                   </div>
-                  <div className="text-gray-500 font-mono break-all">
+                  <div className="text-gray-500 font-mono break-all text-[11px]">
                      <span className="font-medium text-gray-600">Data:</span> {JSON.stringify(err.rowData)}
                   </div>
                 </div>
@@ -360,45 +378,50 @@ export default function EmailQueueManager() {
         </div>
       )}
 
-      {/* --- Preview Modal --- */}
+      {/* --- Preview Modal (Improved Styling) --- */}
       {isModalOpen && (
         <div 
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm" 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm p-4"
           onClick={closeModal}
         >
           <div 
-            className="bg-white rounded-lg shadow-xl p-6 w-full max-w-3xl max-h-[80vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside modal
           >
-            <div className="flex justify-between items-center border-b pb-3 mb-4">
-              <h3 className="text-xl font-semibold">Email Preview</h3>
+            {/* Modal Header */} 
+            <div className="flex justify-between items-center border-b border-gray-200 p-4 flex-shrink-0">
+              <h3 className="text-xl font-semibold text-gray-800">Email Preview</h3>
               <button 
                 onClick={closeModal} 
-                className="text-gray-500 hover:text-gray-800 text-2xl leading-none"
+                className="text-gray-400 hover:text-gray-600 text-3xl leading-none font-light"
                 aria-label="Close modal"
               >
                 &times;
               </button>
             </div>
             
-            {isPreviewing && !previewHtml && <p>Loading preview...</p>}
-            {previewError && <p className="text-red-600">Error: {previewError}</p>}
-            
-            {previewHtml && (
-              <div 
-                className="prose max-w-none"
-                dangerouslySetInnerHTML={{ __html: previewHtml }} 
-              />
-            )}
-            
-            {!isPreviewing && !previewHtml && !previewError && (
-                <p>No content to display.</p>
-            )}
+            {/* Modal Body (Scrollable) */} 
+            <div className="p-6 overflow-y-auto flex-grow">
+                {isPreviewing && !previewHtml && 
+                    <div className="text-center py-10"><ArrowPathIcon className="animate-spin h-6 w-6 text-blue-500 mx-auto" /> Loading preview...</div>
+                }
+                {previewError && <p className="text-red-600 bg-red-50 p-3 rounded border border-red-200">Error: {previewError}</p>}
+                
+                {previewHtml && (
+                  // Use iframe for better style isolation 
+                  <iframe 
+                    srcDoc={previewHtml} 
+                    className="w-full h-[60vh] border border-gray-300 rounded"
+                    title="Email Preview"
+                  />
+                )} 
+            </div>
 
-            <div className="border-t pt-3 mt-4 flex justify-end">
+            {/* Modal Footer */} 
+            <div className="border-t border-gray-200 p-4 flex justify-end flex-shrink-0 bg-gray-50 rounded-b-lg">
               <button 
                 onClick={closeModal} 
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-300"
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 transition-colors duration-150"
               >
                 Close
               </button>
