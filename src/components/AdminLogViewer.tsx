@@ -145,7 +145,7 @@ export default function AdminLogViewer() {
   };
 
   return (
-    <div className="mt-6 p-4 border rounded-lg shadow-md w-full max-w-4xl flex flex-col gap-4">
+    <div className="mt-6 p-4 border rounded-lg shadow-md w-full flex flex-col gap-4">
       <h2 className="text-xl font-semibold">Admin Activity Log</h2>
 
       {/* --- Filter Controls --- */} 
@@ -189,7 +189,7 @@ export default function AdminLogViewer() {
           <table className="min-w-full divide-y divide-gray-200 text-sm">
             <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
-                <th scope="col" className="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSortChange('timestamp')}>
+                <th scope="col" className="sticky left-0 bg-gray-50 px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSortChange('timestamp')}>
                     Timestamp
                     {sortBy.startsWith('timestamp') && <SortIcon direction={sortBy.endsWith('asc') ? 'asc' : 'desc'} />}
                 </th>
@@ -207,10 +207,10 @@ export default function AdminLogViewer() {
             <tbody className="bg-white divide-y divide-gray-200">
               {logs.map((log) => (
                 <tr key={log.id} className="hover:bg-gray-50">
-                  <td className="px-3 py-2 whitespace-nowrap text-gray-500">{formatDate(log.timestamp)}</td>
+                  <td className="sticky left-0 bg-white hover:bg-gray-50 px-3 py-2 whitespace-nowrap text-gray-500">{formatDate(log.timestamp)}</td>
                   <td className="px-3 py-2 whitespace-nowrap text-gray-700">{log.adminUserEmail}</td>
                   <td className="px-3 py-2 whitespace-nowrap text-gray-700 font-mono text-xs">{log.action}</td>
-                  <td className="px-3 py-2 whitespace-nowrap text-gray-500 font-mono text-xs">{formatDetails(log.details)}</td> 
+                  <td className="px-3 py-2 whitespace-normal text-gray-500 font-mono text-xs break-words">{formatDetails(log.details)}</td> 
                 </tr>
               ))}
             </tbody>

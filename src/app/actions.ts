@@ -1229,3 +1229,149 @@ export async function getAnalyticsData(): Promise<{
   }
 }
 // --- End Get Analytics Data Action --- 
+
+// --- Server Action: Get Dashboard Summary Data ---
+interface DashboardSummary {
+  pendingEmailCount: number;
+  recentAdminLogs: Pick<AdminLog, 'id' | 'adminUserEmail' | 'action' | 'timestamp'>[]; // Select specific fields
+  // Add more KPIs later: warningsToday, errorsLastCheck etc.
+}
+
+export async function getDashboardSummary(): Promise<{
+  success: boolean;
+  message: string;
+  data?: DashboardSummary;
+}> {
+  console.log("Attempting to fetch dashboard summary data...");
+
+  // --- Authorization Check --- 
+  const session = await getServerSession(authOptions);
+  if (!session || session.user?.role !== Role.PANEL) {
+    console.warn("Unauthorized attempt to fetch dashboard summary. User:", session?.user?.email);
+    return { success: false, message: "Unauthorized" };
+  }
+  // --- End Authorization Check ---
+
+  try {
+    const [pendingEmailCount, recentAdminLogs] = await prisma.$transaction([
+      prisma.emailQueue.count({
+        where: { status: EmailStatus.QUEUED },
+      }),
+      prisma.adminLog.findMany({
+        take: 3, // Get the 3 most recent logs
+        orderBy: { timestamp: 'desc' },
+        select: { // Only select necessary fields
+          id: true,
+          adminUserEmail: true,
+          action: true,
+          timestamp: true,
+        },
+      }),
+      // Add other queries here for more KPIs
+    ]);
+
+    const summaryData: DashboardSummary = {
+      pendingEmailCount,
+      recentAdminLogs,
+    };
+
+    return { success: true, message: "Fetched dashboard summary.", data: summaryData };
+
+  } catch (error) {
+    console.error("Error fetching dashboard summary data:", error);
+    return { success: false, message: `An unexpected error occurred: ${error instanceof Error ? error.message : String(error)}` };
+  }
+}
+// --- End Get Dashboard Summary Action --- 
+
+// --- Server Action: Approve All Queued Emails ---
+export async function approveAllQueuedEmails(): Promise<{ 
+    success: boolean; 
+    message: string; 
+    approvedCount?: number 
+}> {
+    console.log("Attempting to approve all queued emails...");
+
+    // --- Authorization Check --- 
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id || !session.user.email || session.user.role !== Role.PANEL) {
+        console.warn("Unauthorized attempt to approve all emails. User:", session?.user?.email);
+        return { success: false, message: "Unauthorized or missing user data for logging." };
+    }
+    const adminUserId = session.user.id;
+    const adminUserEmail = session.user.email;
+    console.log(`Authorized user ${adminUserEmail} (ID: ${adminUserId}) is attempting to approve all queued emails.`);
+    // --- End Authorization Check ---
+
+    try {
+        // Find all queued emails first to know which warning logs to update
+        const queuedEmails = await prisma.emailQueue.findMany({
+            where: { status: EmailStatus.QUEUED },
+            select: { id: true, recipientEmail: true, template: true } // Select info needed for warning log update
+        });
+
+        const emailIdsToApprove = queuedEmails.map(e => e.id);
+        const approvedCount = emailIdsToApprove.length;
+
+        if (approvedCount === 0) {
+            return { success: true, message: "No emails were pending approval.", approvedCount: 0 };
+        }
+
+        console.log(`Found ${approvedCount} emails to approve.`);
+
+        // Use a transaction for atomicity
+        await prisma.$transaction(async (tx) => {
+            // 1. Update EmailQueue status for all found IDs
+            await tx.emailQueue.updateMany({
+                where: { 
+                    id: { in: emailIdsToApprove } 
+                },
+                data: { status: EmailStatus.APPROVED },
+            });
+
+            // 2. Update corresponding WarningLog status
+            // Need to iterate or use complex condition if templates/emails aren't unique per queue entry
+            // For simplicity assuming we update based on the emails found
+            for (const email of queuedEmails) {
+                 await tx.warningLog.updateMany({
+                    where: {
+                      recipientEmail: email.recipientEmail,
+                      templateUsed: email.template,
+                      status: EmailStatus.QUEUED, // Only update logs that were queued
+                    },
+                    data: { status: EmailStatus.APPROVED }, 
+                });
+            }
+
+            // 3. Create a single AdminLog entry for the bulk action
+            await tx.adminLog.create({
+                data: {
+                    adminUserId: adminUserId,
+                    adminUserEmail: adminUserEmail,
+                    action: 'approved_all_queued_emails',
+                    details: { 
+                        approvedCount: approvedCount,
+                        emailIds: emailIdsToApprove // Store IDs if needed, careful with large numbers
+                    } 
+                }
+            });
+        });
+
+        console.log(`Successfully approved ${approvedCount} emails and updated related warning logs. Admin log created.`);
+        
+        revalidatePath('/'); // Revalidate the cache for the home page
+
+        // --- Trigger Pusher Event (Consider a specific event or just general update) ---
+        // Triggering individual updates might be noisy, a single bulk update event might be better.
+        // For simplicity, let's just use the existing general update event.
+        await triggerPusherEvent(ADMIN_CHANNEL, EMAIL_QUEUE_EVENT, { triggeredBy: 'approveAll' }); 
+        // --- End Trigger --- 
+
+        return { success: true, message: `Successfully approved ${approvedCount} emails.`, approvedCount: approvedCount };
+
+    } catch (error) {
+        console.error(`Error approving all queued emails:`, error);
+        return { success: false, message: `An unexpected error occurred: ${error instanceof Error ? error.message : String(error)}` };
+    }
+}
+// --- End Approve All Action --- 

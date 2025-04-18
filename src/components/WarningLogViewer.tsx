@@ -124,7 +124,7 @@ export default function WarningLogViewer() {
   // --- End Handlers --- 
 
   return (
-    <div className="mt-6 p-4 border rounded-lg shadow-md w-full max-w-4xl flex flex-col gap-4">
+    <div className="mt-6 p-4 border rounded-lg shadow-md w-full flex flex-col gap-4">
       <h2 className="text-xl font-semibold">Warning Logs</h2>
 
       {/* --- Filter Controls --- */} 
@@ -156,9 +156,9 @@ export default function WarningLogViewer() {
       {!isLoading && !error && logs.length > 0 && (
         <div className="overflow-x-auto border border-gray-200 rounded-md">
           <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
-                <th scope="col" className="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSortChange('recipientName')}>
+                <th scope="col" className="sticky left-0 bg-gray-50 px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSortChange('recipientName')}>
                   Recipient
                   {sortBy.startsWith('recipientName') && <SortIcon direction={sortBy.endsWith('asc') ? 'asc' : 'desc'} />}
                 </th>
@@ -183,11 +183,11 @@ export default function WarningLogViewer() {
             <tbody className="bg-white divide-y divide-gray-200">
               {logs.map((log) => (
                 <tr key={log.id} className="hover:bg-gray-50">
-                  <td className="px-3 py-2 whitespace-nowrap">
+                  <td className="sticky left-0 bg-white hover:bg-gray-50 px-3 py-2 whitespace-normal">
                       <div>{log.recipientName || 'N/A'}</div>
-                      <div className="text-xs text-gray-500">{log.recipientEmail}</div>
+                      <div className="text-xs text-gray-500 break-all">{log.recipientEmail}</div>
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap hidden md:table-cell text-gray-700">{log.templateUsed}</td>
+                  <td className="px-3 py-2 whitespace-normal hidden md:table-cell text-gray-700">{log.templateUsed}</td>
                   <td className="px-3 py-2 whitespace-nowrap text-center text-gray-700">{log.activityCount}</td>
                   <td className="px-3 py-2 whitespace-nowrap text-center text-gray-700">{log.threshold}</td>
                   <td className="px-3 py-2 whitespace-nowrap">

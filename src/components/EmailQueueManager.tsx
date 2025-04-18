@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useTransition, useCallback } from 'react';
 import Pusher from 'pusher-js';
-import { getEmailQueue, updateEmailStatus, checkMemberActivity, getEmailBodyHtml } from '@/app/actions';
+import { getEmailQueue, updateEmailStatus, checkMemberActivity, getEmailBodyHtml, approveAllQueuedEmails } from '@/app/actions';
 import { EmailStatus } from '@prisma/client';
 import { CheckCircleIcon, XCircleIcon, EyeIcon, ArrowPathIcon, ExclamationTriangleIcon } from '@/components/icons'; // Assume you have an icons component
 
@@ -52,6 +52,8 @@ export default function EmailQueueManager() {
   const [isChecking, startCheckTransition] = useTransition();
   const [checkMessage, setCheckMessage] = useState<string | null>(null);
   const [sheetErrors, setSheetErrors] = useState<SheetError[]>([]);
+  const [isApprovingAll, startApproveAllTransition] = useTransition();
+  const [approveAllMessage, setApproveAllMessage] = useState<string | null>(null);
 
   // --- State for Preview Modal ---
   const [isPreviewing, startPreviewTransition] = useTransition();
@@ -186,27 +188,61 @@ export default function EmailQueueManager() {
   };
   // --- End Preview Handling ---
 
+  // --- Handle Approve All --- 
+  const handleApproveAll = () => {
+      if (!confirm(`Are you sure you want to approve all ${queuedEmails.length} pending emails?`)) {
+          return;
+      }
+      startApproveAllTransition(async () => {
+          setApproveAllMessage("Approving all emails...");
+          setUpdateMessage(null); // Clear single update messages
+          try {
+              const result = await approveAllQueuedEmails();
+              setApproveAllMessage(result.message); 
+              // No need to manually refetch, Pusher event should trigger update
+          } catch (err) { 
+              setApproveAllMessage("An unexpected error occurred while approving all emails.");
+              console.error("Approve All Error:", err);
+          }
+      });
+  };
+  // --- End Handle Approve All ---
+
   return (
-    <div className="mt-6 p-4 border rounded-lg shadow-md w-full max-w-4xl flex flex-col gap-4 relative">
+    <div className="mt-6 p-4 border rounded-lg shadow-md w-full flex flex-col gap-4 relative bg-white">
       {/* --- Email Queue Section --- */}
       <div className="w-full">
         <div className="flex flex-col sm:flex-row justify-between items-center gap-2 mb-4 border-b pb-3">
-          <h2 className="text-xl font-semibold">Email Approval Queue</h2>
-          <button 
-            onClick={handleCheckAndRefresh}
-            disabled={isLoading || isUpdating || isChecking}
-            className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-60 transition-colors duration-150"
-          >
-            {isChecking ? (
-                 <> <ArrowPathIcon className="animate-spin h-4 w-4 mr-2" /> Checking Sheet...</> 
-             ) : (
-                 <> <ArrowPathIcon className="h-4 w-4 mr-2" /> Check Sheet & Queue </>
-             )}
-          </button>
+          <h2 className="text-xl font-semibold text-gray-800">Email Approval Queue</h2>
+          <div className="flex flex-wrap gap-2">
+              <button 
+                onClick={handleCheckAndRefresh}
+                disabled={isLoading || isUpdating || isChecking || isApprovingAll}
+                className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-60 transition-colors duration-150"
+              >
+                {isChecking ? (
+                     <> <ArrowPathIcon className="animate-spin h-4 w-4 mr-2" /> Checking...</> 
+                 ) : (
+                     <> <ArrowPathIcon className="h-4 w-4 mr-2" /> Check Sheet</>
+                 )}
+              </button>
+              <button 
+                onClick={handleApproveAll}
+                disabled={isLoading || isUpdating || isChecking || isApprovingAll || queuedEmails.length === 0}
+                className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-60 disabled:bg-green-400 transition-colors duration-150"
+              >
+                {isApprovingAll ? (
+                     <> <ArrowPathIcon className="animate-spin h-4 w-4 mr-2" /> Approving...</> 
+                 ) : (
+                     <> <CheckCircleIcon className="h-4 w-4 mr-2" /> Approve All ({queuedEmails.length})</>
+                 )}
+              </button>
+          </div>
         </div>
 
         {/* Messages Area */} 
-        <div className="min-h-[20px] mb-3">
+        <div className="min-h-[20px] mb-3 text-center sm:text-left">
+          {approveAllMessage && <p className={`text-sm ${approveAllMessage.includes("Failed") || approveAllMessage.includes("Error") ? 'text-red-600' : 'text-green-600'}`}>{approveAllMessage}</p>}
           {checkMessage && <p className={`text-sm ${checkMessage.includes("Failed") || checkMessage.includes("Error") ? 'text-red-600' : 'text-blue-600'}`}>{checkMessage}</p>}
           {updateMessage && <p className={`text-sm ${updateMessage.includes("Failed") || updateMessage.includes("Error") ? 'text-red-600' : 'text-green-600'}`}>{updateMessage}</p>}
           {error && <p className="text-red-600 text-sm">Error fetching queue: {error}</p>}
@@ -223,24 +259,24 @@ export default function EmailQueueManager() {
         {!isLoading && !error && queuedEmails.length > 0 && (
           <div className="hidden md:block overflow-x-auto border border-gray-200 rounded-md">
             <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-100"> 
+              <thead className="bg-gray-100 sticky top-0 z-10"> 
                 <tr>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">Recipient</th>
+                  <th scope="col" className="sticky left-0 bg-gray-100 px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider z-20">Recipient</th>
                   <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">Subject</th>
                   <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">Queued At</th>
-                  <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-600 uppercase tracking-wider">Actions</th> 
+                  <th scope="col" className="sticky right-0 bg-gray-100 px-4 py-3 text-center text-xs font-medium text-gray-600 uppercase tracking-wider z-20">Actions</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {queuedEmails.map((email) => (
                   <tr key={email.id} className="hover:bg-gray-50 transition-colors duration-150">
-                    <td className="px-4 py-3 whitespace-nowrap text-sm">
+                    <td className="sticky left-0 bg-white hover:bg-gray-50 px-4 py-3 whitespace-nowrap text-sm z-10">
                         <div className="text-gray-800 font-medium">{email.recipientName || 'N/A'}</div>
-                        <div className="text-gray-500 text-xs">{email.recipientEmail}</div>
+                        <div className="text-gray-500 text-xs break-all">{email.recipientEmail}</div>
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">{email.subject}</td>
+                    <td className="px-4 py-3 whitespace-normal md:whitespace-nowrap text-sm text-gray-700">{email.subject}</td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{email.createdAt.toLocaleString()}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-center space-x-2">
+                    <td className="sticky right-0 bg-white hover:bg-gray-50 px-4 py-3 whitespace-nowrap text-sm font-medium text-center space-x-2 z-10">
                        <button
                         onClick={() => handlePreview(email.id)}
                         disabled={isUpdating || isChecking || isPreviewing}
@@ -282,7 +318,7 @@ export default function EmailQueueManager() {
                   <div className="font-medium text-gray-800">{email.recipientName || 'N/A'}</div>
                   <div className="text-gray-500 text-xs">{email.recipientEmail}</div>
                 </div>
-                <div className="mb-2">
+                <div className="mb-2 whitespace-normal">
                   <span className="font-medium text-gray-700">Subject:</span> {email.subject}
                 </div>
                 <div className="mb-3 text-xs text-gray-500">
@@ -332,9 +368,9 @@ export default function EmailQueueManager() {
           {/* Table for Medium screens and up */} 
           <div className="hidden md:block overflow-x-auto max-h-60 border border-red-300 rounded-md bg-white shadow-sm">
             <table className="min-w-full divide-y divide-red-200 text-sm">
-               <thead className="bg-red-100 sticky top-0">
+               <thead className="bg-red-100 sticky top-0 z-10">
                 <tr>
-                  <th scope="col" className="px-3 py-2 text-left font-medium text-red-900 uppercase tracking-wider">Row</th>
+                  <th scope="col" className="sticky left-0 bg-red-100 px-3 py-2 text-left font-medium text-red-900 uppercase tracking-wider z-20">Row</th>
                   <th scope="col" className="px-3 py-2 text-left font-medium text-red-900 uppercase tracking-wider">Name (from Sheet)</th>
                   <th scope="col" className="px-3 py-2 text-left font-medium text-red-900 uppercase tracking-wider">Reason</th>
                   <th scope="col" className="px-3 py-2 text-left font-medium text-red-900 uppercase tracking-wider">Raw Row Data</th>
@@ -345,10 +381,10 @@ export default function EmailQueueManager() {
                   const nameFromSheet = typeof err.rowData?.[0] === 'string' ? err.rowData[0] : 'N/A';
                   return (
                     <tr key={err.rowIndex} className="hover:bg-red-50 transition-colors duration-150">
-                      <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-900">{err.rowIndex}</td>
+                      <td className="sticky left-0 bg-white hover:bg-red-50 px-3 py-2 whitespace-nowrap font-medium text-gray-900 z-10">{err.rowIndex}</td>
                       <td className="px-3 py-2 whitespace-nowrap text-gray-700">{nameFromSheet}</td>
                       <td className="px-3 py-2 whitespace-nowrap text-red-800 font-medium">{err.reason}</td>
-                      <td className="px-3 py-2 whitespace-nowrap text-gray-500 font-mono text-xs">{JSON.stringify(err.rowData)}</td>
+                      <td className="px-3 py-2 whitespace-normal text-gray-500 font-mono text-xs break-words">{JSON.stringify(err.rowData)}</td>
                     </tr>
                   );
                 })}
@@ -368,7 +404,7 @@ export default function EmailQueueManager() {
                   <div className="mb-1">
                     <span className="font-medium text-red-700">Reason:</span> <span className="text-red-800 font-medium">{err.reason}</span>
                   </div>
-                  <div className="text-gray-500 font-mono break-all text-[11px]">
+                  <div className="text-gray-500 font-mono break-all text-[11px] whitespace-normal">
                      <span className="font-medium text-gray-600">Data:</span> {JSON.stringify(err.rowData)}
                   </div>
                 </div>
