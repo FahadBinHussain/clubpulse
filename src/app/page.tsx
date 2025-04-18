@@ -1,6 +1,6 @@
 'use client'; // Need client component for hooks like useSession
 
-import { useState } from 'react'; // <-- Import useState
+import { useState, useEffect } from 'react'; // <-- Import useState and useEffect
 import { useSession, signIn, signOut } from "next-auth/react";
 import Image from "next/image";
 import EmailQueueManager from "@/components/EmailQueueManager";
@@ -14,10 +14,25 @@ import DashboardOverview from '@/components/DashboardOverview'; // <-- Import th
 
 export default function Home() {
   const { data: session, status } = useSession();
-  const [activeView, setActiveView] = useState<AdminView>('dashboard'); // <-- Add state for active view
+  // Set initial state based on role
+  const initialView = session?.user?.role === 'PANEL' ? 'dashboard' : 'selfStatus';
+  const [activeView, setActiveView] = useState<AdminView>(initialView);
+
+  // Update state if role changes after initial load (e.g., first login sync)
+  useEffect(() => {
+      const currentInitialView = session?.user?.role === 'PANEL' ? 'dashboard' : 'selfStatus';
+      // Only update if the initial view derived from session is different from current active view
+      // This prevents resetting view when session updates for other reasons
+      if (activeView !== currentInitialView && 
+          ((session?.user?.role !== 'PANEL' && activeView !== 'selfStatus') || 
+           (session?.user?.role === 'PANEL' && activeView === 'selfStatus'))) { 
+          setActiveView(currentInitialView);
+      }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.role]); // Dependency on role
 
   // Helper function to render the active panel component
-  const renderActivePanelComponent = () => {
+  const renderActiveComponent = () => { // Renamed for clarity
     switch (activeView) {
       case 'queue':
         return <EmailQueueManager />;
@@ -29,10 +44,26 @@ export default function Home() {
         return <AdminLogViewer />;
       case 'analytics':
         return <AnalyticsViewer />;
+      case 'selfStatus': // Added case for self status
+        return (
+           // Center the portal
+           <div className="w-full flex justify-center pt-6 sm:pt-10">
+              <MemberStatusPortal /> 
+           </div>
+        );
       case 'dashboard':
       default:
-        // Show the new DashboardOverview component
-        return <DashboardOverview />;
+        // Show the DashboardOverview component (only relevant for PANEL)
+        if (session?.user?.role === 'PANEL') {
+            return <DashboardOverview />;
+        } else {
+            // Non-panel default should be self-status
+            return (
+               <div className="w-full flex justify-center pt-6 sm:pt-10">
+                  <MemberStatusPortal /> 
+               </div>
+            );
+        }
     }
   };
 
@@ -87,24 +118,17 @@ export default function Home() {
       <main className="flex-grow overflow-y-hidden"> 
         <div className="flex flex-row h-full">
 
-          {/* --- Sidebar (Render for Panel users) --- */}
-          {status === "authenticated" && session?.user?.role === 'PANEL' && (
-            <Sidebar activeView={activeView} setActiveView={setActiveView} /> // <-- Use Sidebar component
+          {/* --- Sidebar (Render for ALL authenticated users) --- */}
+          {status === "authenticated" && session && (
+            <Sidebar activeView={activeView} setActiveView={setActiveView} session={session} /> // Pass session
           )}
 
           {/* --- Main View Area --- */}
           <div className="flex-grow p-4 sm:p-6 lg:p-8 overflow-y-auto bg-gray-100"> 
             
             {status === "authenticated" && session && (
-              <>
-                {session.user?.role === 'PANEL' ? (
-                  // Render the component based on activeView state
-                  renderActivePanelComponent() 
-                ) : (
-                  // --- MEMBER/GUEST VIEW --- 
-                  <MemberStatusPortal /> 
-                )}
-              </>
+               // Directly render based on state, role check is handled inside render function/sidebar items
+               renderActiveComponent() 
             )}
 
             {/* Handle unauthenticated state */}
