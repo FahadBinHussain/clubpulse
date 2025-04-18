@@ -60,7 +60,6 @@ export default function EmailQueueManager() {
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [currentPreviewEmailId, setCurrentPreviewEmailId] = useState<string | null>(null);
   // --- End Preview State ---
 
   // --- Extracted Data Fetching Logic ---
@@ -164,7 +163,6 @@ export default function EmailQueueManager() {
       setPreviewError(null);
       setPreviewHtml(null);
       setIsModalOpen(true);
-      setCurrentPreviewEmailId(emailId);
       
       try {
         const result = await getEmailBodyHtml(emailId);
@@ -184,7 +182,6 @@ export default function EmailQueueManager() {
       setIsModalOpen(false);
       setPreviewHtml(null);
       setPreviewError(null);
-      setCurrentPreviewEmailId(null);
   };
   // --- End Preview Handling ---
 

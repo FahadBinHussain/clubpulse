@@ -2,7 +2,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { getSheetData } from '@/lib/googleSheets';
-import { EmailStatus, Role, RoleThreshold, WarningLog, AdminLog } from '@prisma/client';
+import { EmailStatus, Role, RoleThreshold, WarningLog, AdminLog, Prisma } from '@prisma/client';
 import { sendEmail } from '@/lib/resend';
 import { CreateEmailResponse } from 'resend';
 import { getServerSession } from 'next-auth/next';
@@ -967,39 +967,39 @@ export async function getWarningLogs(
     const size = Math.max(1, Math.min(50, pageSize));
     const skip = (pageNumber - 1) * size;
 
-    // --- Build Prisma Query Conditions --- 
-    const whereClause: any = {};
+    // --- Build Prisma Query Conditions ---
+    const whereClause: Prisma.WarningLogWhereInput = {};
     if (filterStatus && Object.values(EmailStatus).includes(filterStatus)) {
         whereClause.status = filterStatus;
         console.log(`Applying filter: status = ${filterStatus}`);
     }
 
-    const orderByClause: any = {};
+    const orderByClause: Prisma.WarningLogOrderByWithRelationInput | Prisma.WarningLogOrderByWithRelationInput[] = {};
     if (sortBy) {
         const [field, direction] = sortBy.split('_');
         if (validSortFields.includes(field) && validSortDirections.includes(direction)) {
-            orderByClause[field] = direction;
+            (orderByClause as any)[field] = direction;
             console.log(`Applying sort: ${field} ${direction}`);
         } else {
             console.warn(`Invalid sortBy parameter: ${sortBy}. Using default sort.`);
-            orderByClause['createdAt'] = 'desc'; // Default sort
-            sortBy = 'createdAt_desc'; // Reflect default in response
+            (orderByClause as any)['createdAt'] = 'desc';
+            sortBy = 'createdAt_desc';
         }
     } else {
-        orderByClause['createdAt'] = 'desc'; // Default sort if none provided
-        sortBy = 'createdAt_desc'; // Reflect default in response
+        (orderByClause as any)['createdAt'] = 'desc';
+        sortBy = 'createdAt_desc';
     }
-    // --- End Build Prisma Query Conditions --- 
+    // --- End Build Prisma Query Conditions ---
 
     // Use transaction to get logs and total count with filters
     const [logs, totalCount] = await prisma.$transaction([
       prisma.warningLog.findMany({
-        where: whereClause, // Apply filter
+        where: whereClause,
         skip: skip,
         take: size,
-        orderBy: orderByClause, // Apply sort
+        orderBy: orderByClause,
       }),
-      prisma.warningLog.count({ where: whereClause }) // Count needs to respect the filter
+      prisma.warningLog.count({ where: whereClause })
     ]);
 
     console.log(`Fetched ${logs.length} logs out of ${totalCount} total (matching filter).`);
@@ -1011,8 +1011,8 @@ export async function getWarningLogs(
       totalCount,
       page: pageNumber,
       pageSize: size,
-      filterStatus: filterStatus, // Return applied filter
-      sortBy: sortBy          // Return applied sort
+      filterStatus: filterStatus,
+      sortBy: sortBy
     };
   } catch (error) {
     console.error("Error fetching warning logs:", error);
@@ -1064,34 +1064,33 @@ export async function getAdminLogs(
     const size = Math.max(1, Math.min(50, pageSize));
     const skip = (pageNumber - 1) * size;
 
-    // --- Build Prisma Query Conditions --- 
-    const whereClause: any = {};
+    // --- Build Prisma Query Conditions ---
+    const whereClause: Prisma.AdminLogWhereInput = {};
     if (filterUserEmail) {
-        // Use 'contains' for partial matching, or 'equals' for exact match
-        whereClause.adminUserEmail = { contains: filterUserEmail, mode: 'insensitive' }; // Case-insensitive partial match
+        whereClause.adminUserEmail = { contains: filterUserEmail, mode: 'insensitive' };
         console.log(`Applying filter: adminUserEmail contains ${filterUserEmail}`);
     }
     if (filterAction) {
-        whereClause.action = { contains: filterAction, mode: 'insensitive' }; // Case-insensitive partial match
+        whereClause.action = { contains: filterAction, mode: 'insensitive' };
         console.log(`Applying filter: action contains ${filterAction}`);
     }
 
-    const orderByClause: any = {};
+    const orderByClause: Prisma.AdminLogOrderByWithRelationInput | Prisma.AdminLogOrderByWithRelationInput[] = {};
     if (sortBy) {
         const [field, direction] = sortBy.split('_');
         if (validAdminSortFields.includes(field) && validSortDirections.includes(direction)) {
-            orderByClause[field] = direction;
+            (orderByClause as any)[field] = direction;
             console.log(`Applying sort: ${field} ${direction}`);
         } else {
             console.warn(`Invalid sortBy parameter for admin logs: ${sortBy}. Using default sort.`);
-            orderByClause['timestamp'] = 'desc'; // Default sort
-            sortBy = 'timestamp_desc'; // Reflect default in response
+            (orderByClause as any)['timestamp'] = 'desc';
+            sortBy = 'timestamp_desc';
         }
     } else {
-        orderByClause['timestamp'] = 'desc'; // Default sort if none provided
-        sortBy = 'timestamp_desc'; // Reflect default in response
+        (orderByClause as any)['timestamp'] = 'desc';
+        sortBy = 'timestamp_desc';
     }
-    // --- End Build Prisma Query Conditions --- 
+    // --- End Build Prisma Query Conditions ---
 
     // Use transaction to get logs and total count with filters
     const [logs, totalCount] = await prisma.$transaction([

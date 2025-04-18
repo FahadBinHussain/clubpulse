@@ -95,18 +95,20 @@ export default function AdminLogViewer() {
         setIsLoading(false);
       }
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // No dependencies needed here
+  }, [startFetchingTransition]);
 
   // Initial fetch
   useEffect(() => {
     fetchLogs(currentPage, filterUserEmail, filterAction, sortBy);
-  }, [fetchLogs]); // Run only once on mount
+  }, [fetchLogs, currentPage, filterUserEmail, filterAction, sortBy]);
 
   // Debounced fetch function for filter inputs
-  const debouncedFetch = useCallback(debounce((page, userEmail, action, sort) => {
-    fetchLogs(page, userEmail, action, sort);
-  }, 500), [fetchLogs]); // Debounce by 500ms
+  const debouncedFetch = useCallback(
+    debounce((page: number, userEmail: string | null, action: string | null, sort: SortOption) => {
+      fetchLogs(page, userEmail, action, sort);
+    }, 500), 
+    [fetchLogs]
+  );
 
   // --- Handlers --- 
   const handlePageChange = (newPage: number) => {

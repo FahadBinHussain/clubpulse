@@ -87,13 +87,12 @@ export default function WarningLogViewer() {
         setIsLoading(false);
       }
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Dependencies: none needed due to how it's called
+  }, [startFetchingTransition]); // Add startFetchingTransition dependency
 
   // Initial fetch
   useEffect(() => {
     fetchLogs(currentPage, filterStatus, sortBy); 
-  }, [fetchLogs]); // Run fetchLogs once on mount
+  }, [fetchLogs, currentPage, filterStatus, sortBy]); 
 
   // --- Handlers for UI controls --- 
   const handlePageChange = (newPage: number) => {
