@@ -473,6 +473,13 @@ export async function processEmailQueue(): Promise<{ success: boolean; message: 
             }
         }
 
+        // --- Trigger Pusher Event if emails were processed --- 
+        if (processedCount > 0) {
+            console.log("Processing complete, triggering Pusher event.");
+            await triggerPusherEvent('admin-updates', 'email-queue-updated', { triggeredBy: 'processQueueAction' });
+        }
+        // --- End Trigger --- 
+
         const message = `Email queue processing finished. Processed: ${processedCount}, Sent: ${sentCount}, Failed: ${failedCount}.`;
         console.log(message);
         return { success: true, message, processed: processedCount, sent: sentCount, failed: failedCount };
