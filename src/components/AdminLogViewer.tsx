@@ -34,14 +34,15 @@ const SortIcon = ({ direction }: { direction: SortDirection | null }) => {
   return direction === 'asc' ? <span className="ml-1">▲</span> : <span className="ml-1">▼</span>;
 };
 
-// Debounce helper function
-// Revert to using 'any' to satisfy the linter for generic utility
-function debounce<F extends (...args: any[]) => any>(func: F, wait: number): (...args: Parameters<F>) => void {
+// Debounce helper function with specific signature for fetchLogs
+type FetchLogsFunc = (page: number, userEmail: string | null, action: string | null, sort: SortOption) => void;
+
+function debounce(func: FetchLogsFunc, wait: number): FetchLogsFunc {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
-  return (...args: Parameters<F>) => {
+  return (page, userEmail, action, sort) => {
     if (timeoutId) clearTimeout(timeoutId);
     timeoutId = setTimeout(() => {
-      func(...args);
+      func(page, userEmail, action, sort);
     }, wait);
   };
 }
@@ -105,10 +106,8 @@ export default function AdminLogViewer() {
 
   // Debounced fetch function for filter inputs
   const debouncedFetch = useCallback(
-    debounce((page: number, userEmail: string | null, action: string | null, sort: SortOption) => {
-      fetchLogs(page, userEmail, action, sort);
-    }, 500), 
-    [fetchLogs]
+    debounce(fetchLogs, 500), // Pass fetchLogs directly to debounce
+    [fetchLogs] // Only fetchLogs is the dependency for recreating the debounced function
   );
 
   // --- Handlers --- 

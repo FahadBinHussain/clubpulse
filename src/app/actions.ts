@@ -974,21 +974,21 @@ export async function getWarningLogs(
         console.log(`Applying filter: status = ${filterStatus}`);
     }
 
-    // Initialize orderByClause as an empty object
-    const orderByClause: Prisma.WarningLogOrderByWithRelationInput | Prisma.WarningLogOrderByWithRelationInput[] = {};
+    // Determine the orderBy clause in a type-safe manner
+    let orderByClause: Prisma.WarningLogOrderByWithRelationInput | Prisma.WarningLogOrderByWithRelationInput[];
     if (sortBy) {
         const [field, direction] = sortBy.split('_');
         if (validSortFields.includes(field) && validSortDirections.includes(direction)) {
-             // Use 'as any' to dynamically set the key, accepting the lint warning for now
-            (orderByClause as any)[field] = direction;
+            // Assert the field type to satisfy Prisma's expected keys
+            orderByClause = { [field as keyof Prisma.WarningLogOrderByWithRelationInput]: direction as Prisma.SortOrder };
             console.log(`Applying sort: ${field} ${direction}`);
         } else {
             console.warn(`Invalid sortBy parameter: ${sortBy}. Using default sort.`);
-            (orderByClause as any)['createdAt'] = 'desc';
+            orderByClause = { createdAt: 'desc' }; // Assign default directly
             sortBy = 'createdAt_desc'; // Reflect default in response
         }
     } else {
-        (orderByClause as any)['createdAt'] = 'desc'; // Default sort
+        orderByClause = { createdAt: 'desc' }; // Assign default directly
         sortBy = 'createdAt_desc'; // Reflect default in response
     }
     // --- End Build Prisma Query Conditions ---
@@ -1077,21 +1077,21 @@ export async function getAdminLogs(
         console.log(`Applying filter: action contains ${filterAction}`);
     }
 
-    // Initialize orderByClause as an empty object
-    const orderByClause: Prisma.AdminLogOrderByWithRelationInput | Prisma.AdminLogOrderByWithRelationInput[] = {};
+    // Determine the orderBy clause in a type-safe manner
+    let orderByClause: Prisma.AdminLogOrderByWithRelationInput | Prisma.AdminLogOrderByWithRelationInput[];
     if (sortBy) {
         const [field, direction] = sortBy.split('_');
         if (validAdminSortFields.includes(field) && validSortDirections.includes(direction)) {
-            // Use 'as any' to dynamically set the key, accepting the lint warning for now
-            (orderByClause as any)[field] = direction;
+             // Assert the field type to satisfy Prisma's expected keys
+            orderByClause = { [field as keyof Prisma.AdminLogOrderByWithRelationInput]: direction as Prisma.SortOrder };
             console.log(`Applying sort: ${field} ${direction}`);
         } else {
             console.warn(`Invalid sortBy parameter for admin logs: ${sortBy}. Using default sort.`);
-            (orderByClause as any)['timestamp'] = 'desc';
+            orderByClause = { timestamp: 'desc' }; // Assign default directly
             sortBy = 'timestamp_desc'; // Reflect default in response
         }
     } else {
-        (orderByClause as any)['timestamp'] = 'desc'; // Default sort
+        orderByClause = { timestamp: 'desc' }; // Assign default directly
         sortBy = 'timestamp_desc'; // Reflect default in response
     }
     // --- End Build Prisma Query Conditions ---
