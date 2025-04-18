@@ -1385,3 +1385,40 @@ export async function approveAllQueuedEmails(): Promise<{
     }
 }
 // --- End Approve All Action --- 
+
+// --- Server Action: Update User Theme Preference --- 
+export async function updateUserTheme(theme: string): Promise<{
+  success: boolean;
+  message: string;
+}> {
+  console.log(`Attempting to update theme preference to: ${theme}`);
+
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    console.warn("Attempt to update theme without authenticated user.");
+    return { success: false, message: "Authentication required." };
+  }
+  const userId = session.user.id;
+
+  try {
+    // Optional: Validate the theme name against a predefined list if desired
+    // const validThemes = ['light', 'dark', 'system', 'zinc', 'rose', 'blue'];
+    // if (!validThemes.includes(theme)) {
+    //   return { success: false, message: "Invalid theme specified." };
+    // }
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { theme: theme },
+    });
+    
+    console.log(`Successfully updated theme preference for user ${userId} to ${theme}.`);
+    // No need to revalidate path, this is a client-side preference mostly
+    return { success: true, message: "Theme preference saved." };
+
+  } catch (error) {
+    console.error(`Error updating theme preference for user ${userId}:`, error);
+    return { success: false, message: `An unexpected error occurred: ${error instanceof Error ? error.message : String(error)}` };
+  }
+}
+// --- End Update User Theme Action --- 

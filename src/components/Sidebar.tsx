@@ -45,8 +45,8 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, session })
   }
 
   return (
-    <aside className="w-64 bg-gray-800 text-white p-4 flex-shrink-0 hidden md:flex md:flex-col overflow-y-auto">
-      <h2 className="text-lg font-semibold mb-6 border-b border-gray-700 pb-2">Navigation</h2>
+    <aside className="w-64 bg-gray-800 dark:bg-gray-900 text-white dark:text-gray-200 p-4 flex-shrink-0 hidden md:flex md:flex-col overflow-y-auto border-r border-gray-200 dark:border-gray-700">
+      <h2 className="text-lg font-semibold mb-6 border-b border-gray-700 dark:border-gray-600 pb-2 text-gray-100 dark:text-white">Navigation</h2>
       <nav className="flex-grow">
         <ul className="space-y-2">
           {navItems.map((item) => (
@@ -55,20 +55,20 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, session })
                 onClick={() => setActiveView(item.id as AdminView)}
                 className={`w-full flex items-center px-3 py-2 text-sm rounded-md transition-colors duration-150 
                   ${activeView === item.id 
-                    ? 'bg-gray-700 text-white font-medium' 
-                    : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                    ? 'bg-indigo-600 dark:bg-indigo-500 text-white font-medium' 
+                    : 'text-gray-300 dark:text-gray-400 hover:bg-gray-700 dark:hover:bg-gray-700 hover:text-white dark:hover:text-white'
                   }`}
               >
-                {/* Add icon placeholder later */}
+                {/* Icon placeholder can have dark styles too if needed */}
+                {/* <span className="mr-2 text-gray-400 group-hover:text-gray-300">...</span> */}
                 <span className="ml-2">{item.label}</span>
               </button>
             </li>
           ))}
         </ul>
       </nav>
-      {/* Optional: Add footer or user info at the bottom of sidebar */}
-      <div className="mt-auto pt-4 border-t border-gray-700">
-         <p className="text-xs text-gray-500 text-center">ClubPulse v0.1</p> 
+      <div className="mt-auto pt-4 border-t border-gray-700 dark:border-gray-600">
+         <p className="text-xs text-gray-500 dark:text-gray-400 text-center">ClubPulse v0.1</p> 
       </div>
     </aside>
   );

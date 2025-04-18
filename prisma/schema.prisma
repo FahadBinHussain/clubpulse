@@ -60,6 +60,7 @@ model User {
   image         String?
   role          Role      @default(GUEST) // Broad role for access control
   specificRole  String?   // Store the actual role string from the sheet (e.g., "Executive")
+  theme         String?   // <-- Add theme preference field
   lastSeen      DateTime? @updatedAt
 
   accounts Account[]

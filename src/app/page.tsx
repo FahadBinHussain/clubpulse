@@ -11,6 +11,7 @@ import AnalyticsViewer from "@/components/AnalyticsViewer"; // <-- Import the ne
 import MemberStatusPortal from "@/components/MemberStatusPortal"; // <-- Import the new portal component
 import Sidebar, { AdminView } from '@/components/Sidebar'; // <-- Import Sidebar and type
 import DashboardOverview from '@/components/DashboardOverview'; // <-- Import the new component
+import { ThemeSwitcher } from '@/components/ThemeSwitcher'; // <-- Import ThemeSwitcher
 
 export default function Home() {
   const { data: session, status } = useSession();
@@ -69,15 +70,18 @@ export default function Home() {
 
   return (
     // Use flex-col for overall structure, ensure full height
-    <div className="flex flex-col h-screen font-[family-name:var(--font-geist-sans)] bg-gray-50">
+    <div className="flex flex-col h-screen font-[family-name:var(--font-geist-sans)] bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
       
       {/* --- Fixed Header --- */}
-      <header className="sticky top-0 z-30 flex items-center justify-between w-full px-4 py-3 bg-white border-b border-gray-200 shadow-sm sm:px-6 lg:px-8">
-        <h1 className="text-2xl font-bold text-gray-800">ClubPulse</h1>
+      <header className="sticky top-0 z-30 flex items-center justify-between w-full px-4 py-3 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm sm:px-6 lg:px-8">
+        <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">ClubPulse</h1>
         
         {/* User Info / Sign In/Out Area */}
         <div className="flex items-center gap-4">
-          {status === "loading" && <p className="text-sm text-gray-500">Loading...</p>}
+          {/* Add ThemeSwitcher here */}
+          <ThemeSwitcher /> 
+          
+          {status === "loading" && <p className="text-sm text-gray-500 dark:text-gray-400">Loading...</p>}
 
           {status === "authenticated" && session && (
             <>
@@ -92,7 +96,7 @@ export default function Home() {
                         className="rounded-full"
                       />
                  )}
-                 <span className="hidden sm:inline text-gray-700">{session.user?.name}</span>
+                 <span className="hidden sm:inline text-gray-700 dark:text-gray-300">{session.user?.name}</span>
               </div>
               <button
                 onClick={() => signOut()}
@@ -124,7 +128,7 @@ export default function Home() {
           )}
 
           {/* --- Main View Area --- */}
-          <div className="flex-grow p-4 sm:p-6 lg:p-8 overflow-y-auto bg-gray-100"> 
+          <div className="flex-grow p-4 sm:p-6 lg:p-8 overflow-y-auto bg-gray-100 dark:bg-gray-950"> 
             
             {status === "authenticated" && session && (
                // Directly render based on state, role check is handled inside render function/sidebar items
@@ -134,9 +138,8 @@ export default function Home() {
             {/* Handle unauthenticated state */}
             {status === "unauthenticated" && (
                <div className="flex flex-col items-center justify-center h-full">
-                 <div className="p-6 bg-white rounded-lg shadow border text-center">
-                    <p className="mb-4">Please sign in to view the dashboard.</p>
-                    {/* Sign in button is in the header */}
+                 <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow border dark:border-gray-700 text-center">
+                    <p className="mb-4 text-gray-700 dark:text-gray-300">Please sign in to view the dashboard.</p>
                  </div>
                </div>
             )}
