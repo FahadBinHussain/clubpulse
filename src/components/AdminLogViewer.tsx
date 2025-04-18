@@ -35,6 +35,7 @@ const SortIcon = ({ direction }: { direction: SortDirection | null }) => {
 };
 
 // Debounce helper function
+// Revert to using 'any' to satisfy the linter for generic utility
 function debounce<F extends (...args: any[]) => any>(func: F, wait: number): (...args: Parameters<F>) => void {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   return (...args: Parameters<F>) => {

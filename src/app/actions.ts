@@ -974,20 +974,22 @@ export async function getWarningLogs(
         console.log(`Applying filter: status = ${filterStatus}`);
     }
 
+    // Initialize orderByClause as an empty object
     const orderByClause: Prisma.WarningLogOrderByWithRelationInput | Prisma.WarningLogOrderByWithRelationInput[] = {};
     if (sortBy) {
         const [field, direction] = sortBy.split('_');
         if (validSortFields.includes(field) && validSortDirections.includes(direction)) {
+             // Use 'as any' to dynamically set the key, accepting the lint warning for now
             (orderByClause as any)[field] = direction;
             console.log(`Applying sort: ${field} ${direction}`);
         } else {
             console.warn(`Invalid sortBy parameter: ${sortBy}. Using default sort.`);
             (orderByClause as any)['createdAt'] = 'desc';
-            sortBy = 'createdAt_desc';
+            sortBy = 'createdAt_desc'; // Reflect default in response
         }
     } else {
-        (orderByClause as any)['createdAt'] = 'desc';
-        sortBy = 'createdAt_desc';
+        (orderByClause as any)['createdAt'] = 'desc'; // Default sort
+        sortBy = 'createdAt_desc'; // Reflect default in response
     }
     // --- End Build Prisma Query Conditions ---
 
@@ -1075,20 +1077,22 @@ export async function getAdminLogs(
         console.log(`Applying filter: action contains ${filterAction}`);
     }
 
+    // Initialize orderByClause as an empty object
     const orderByClause: Prisma.AdminLogOrderByWithRelationInput | Prisma.AdminLogOrderByWithRelationInput[] = {};
     if (sortBy) {
         const [field, direction] = sortBy.split('_');
         if (validAdminSortFields.includes(field) && validSortDirections.includes(direction)) {
+            // Use 'as any' to dynamically set the key, accepting the lint warning for now
             (orderByClause as any)[field] = direction;
             console.log(`Applying sort: ${field} ${direction}`);
         } else {
             console.warn(`Invalid sortBy parameter for admin logs: ${sortBy}. Using default sort.`);
             (orderByClause as any)['timestamp'] = 'desc';
-            sortBy = 'timestamp_desc';
+            sortBy = 'timestamp_desc'; // Reflect default in response
         }
     } else {
-        (orderByClause as any)['timestamp'] = 'desc';
-        sortBy = 'timestamp_desc';
+        (orderByClause as any)['timestamp'] = 'desc'; // Default sort
+        sortBy = 'timestamp_desc'; // Reflect default in response
     }
     // --- End Build Prisma Query Conditions ---
 
