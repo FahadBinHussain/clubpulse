@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useTransition, useCallback, useRef } from 'react';
+import { useState, useEffect, useTransition, useCallback, useRef, useMemo } from 'react';
 import { getAdminLogs } from '@/app/actions';
 import { AdminLog } from '@prisma/client'; // Import AdminLog type
 
@@ -105,9 +105,11 @@ export default function AdminLogViewer() {
   }, [fetchLogs, currentPage, filterUserEmail, filterAction, sortBy]);
 
   // Debounced fetch function for filter inputs
-  const debouncedFetch = useCallback(
-    debounce(fetchLogs, 500), // Pass fetchLogs directly to debounce
-    [fetchLogs] // Only fetchLogs is the dependency for recreating the debounced function
+  // Use useMemo to memoize the debounced function itself.
+  // The debounced function will be recreated only if fetchLogs changes.
+  const debouncedFetchLogs = useMemo(() => 
+    debounce(fetchLogs, 500), 
+    [fetchLogs]
   );
 
   // --- Handlers --- 
@@ -122,7 +124,7 @@ export default function AdminLogViewer() {
     setFilterUserEmail(value); // Update state immediately for input control
     userEmailFilterRef.current = value; // Update ref immediately
     setCurrentPage(1);
-    debouncedFetch(1, value, actionFilterRef.current, sortBy);
+    debouncedFetchLogs(1, value, actionFilterRef.current, sortBy);
   };
 
   const handleFilterActionChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -130,7 +132,7 @@ export default function AdminLogViewer() {
     setFilterAction(value); // Update state immediately
     actionFilterRef.current = value; // Update ref immediately
     setCurrentPage(1);
-    debouncedFetch(1, userEmailFilterRef.current, value, sortBy);
+    debouncedFetchLogs(1, userEmailFilterRef.current, value, sortBy);
   };
 
   const handleSortChange = (field: SortField) => {

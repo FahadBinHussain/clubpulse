@@ -19,24 +19,22 @@ const themes = [
 
 export function ThemeSwitcher() {
   const [mounted, setMounted] = useState(false)
-  const { theme, setTheme, resolvedTheme } = useTheme()
+  const { theme, setTheme } = useTheme()
   const [isSaving, startSaveTransition] = useTransition()
-  const { data: session, status } = useSession() // Get session to check if user is authenticated
+  const { status } = useSession()
+
+  // Log initial/updated theme values
+  useEffect(() => {
+    console.log('[ThemeSwitcher] Theme state:', theme);
+  }, [theme]);
 
   // Effect ensures component is mounted before rendering UI to avoid hydration mismatch
   useEffect(() => setMounted(true), [])
 
   const handleThemeChange = (newTheme: string) => {
-    console.log(`[ThemeSwitcher] handleThemeChange called with: ${newTheme}`);
-    console.log(`[ThemeSwitcher] Current theme state BEFORE setTheme: ${theme}`);
+    console.log(`[ThemeSwitcher] handleThemeChange called. Current theme: ${theme}, New theme requested: ${newTheme}`);
     setTheme(newTheme); // Update theme via next-themes
-    console.log(`[ThemeSwitcher] Called setTheme('${newTheme}'). Check localStorage NOW.`);
-
-    // Immediately check local storage after the call (though it might be async)
-    setTimeout(() => {
-        const storedTheme = localStorage.getItem('theme');
-        console.log(`[ThemeSwitcher] localStorage 'theme' value shortly after setting: ${storedTheme}`);
-    }, 100); // Short delay
+    console.log(`[ThemeSwitcher] setTheme('${newTheme}') called.`);
 
     // If user is logged in, save preference to DB
     if (status === 'authenticated') {
@@ -58,9 +56,6 @@ export function ThemeSwitcher() {
     // Render a placeholder or null on the server/before mount
     return <div className="w-8 h-8"></div>; // Placeholder to prevent layout shift
   }
-
-  // Find the current theme object for display
-  const currentThemeObj = themes.find(t => t.value === theme); // Use 'theme', not 'resolvedTheme' for the button state
 
   return (
     <div className="relative inline-block text-left">

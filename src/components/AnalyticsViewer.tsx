@@ -12,11 +12,26 @@ interface AnalyticsStatusData {
   activityDistribution?: { range: string; count: number }[];
 }
 
+// --- Props type for Custom Label Renderer ---
+interface CustomizedLabelProps {
+  cx: number;
+  cy: number;
+  midAngle: number;
+  innerRadius: number;
+  outerRadius: number;
+  percent: number;
+  name: string;
+  // 'index' and 'value' are passed by recharts but not used here, so commented out or removed
+  // index: number; 
+  // value: number;
+}
+// --- End Props type ---
+
 const PIE_COLORS = ['#10B981', '#F59E0B']; // Green for Active, Amber for Below Threshold
 const BAR_COLOR = '#3B82F6'; // Blue for activity bars
 
 // --- Custom Label Renderer for Pie Chart ---
-const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, index, name, value }: any) => {
+const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, name }: CustomizedLabelProps) => {
   const RADIAN = Math.PI / 180;
   // Adjust label position slightly outwards from the center of the slice
   const radius = innerRadius + (outerRadius - innerRadius) * 0.6; 
