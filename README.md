@@ -3,6 +3,10 @@
      alt="Wakapi Time Tracking" 
      title="Minimum amount of time spent on this project">
 
+## Maintenance Status
+
+This project is not actively maintained now. It remains public as a reference/portfolio project, but new features, fixes, and support are not currently planned.
+
 ## Getting Started
 
 First, run the development server:
