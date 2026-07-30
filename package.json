@@ -22,7 +22,7 @@
     "google-auth-library": "^9.15.1",
     "googleapis": "^148.0.0",
     "mjml": "^4.15.3",
-    "next": "^16.2.12",
+    "next": "^15.5.22",
     "next-auth": "^4.24.11",
     "next-themes": "^0.4.6",
     "pusher": "^5.2.0",
