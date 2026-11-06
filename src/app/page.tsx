@@ -118,6 +118,25 @@ export default function Home() {
         </div>
       </header>
 
+      {/* --- Role sync failure: surface it, never silently degrade to GUEST --- */}
+      {session?.user?.roleSyncError && (
+        <div
+          role="alert"
+          className="flex items-start gap-3 w-full px-4 py-3 text-sm bg-amber-100 border-b border-amber-300 text-amber-900 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-100 sm:px-6 lg:px-8"
+        >
+          <span
+            aria-hidden="true"
+            className="flex flex-none items-center justify-center w-5 h-5 mt-px text-xs font-bold text-white bg-amber-600 rounded-full"
+          >
+            !
+          </span>
+          <p>
+            <span className="font-semibold">Club roles could not be assigned.</span>{' '}
+            {session.user.roleSyncError} You are signed in as a Guest until this is fixed.
+          </p>
+        </div>
+      )}
+
       {/* --- Main Content Area with Sidebar --- */}
       <main className="flex-grow overflow-y-hidden"> 
         <div className="flex flex-row h-full">

@@ -9,6 +9,7 @@ declare module "next-auth" {
     user?: {
       id: string;
       role: Role; // Add the role property
+      roleSyncError?: string | null; // Set when the role sync failed (null = ok)
     } & DefaultSession["user"];
   }
 
@@ -18,6 +19,7 @@ declare module "next-auth" {
    */
   interface User extends DefaultUser {
     role: Role; // Add the role property
+    roleSyncError?: string | null; // Set when the role sync failed (null = ok)
   }
 }
 

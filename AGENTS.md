@@ -126,6 +126,18 @@ cd ~/Downloads/clubpulse
 
 `.env*` and `.vercel/` are gitignored — never commit them.
 
+**`NEXTAUTH_URL` differs per environment.** vercel holds `https://bucsc.vercel.app`;
+your local `.env.local` must hold `http://localhost:3000`, otherwise local google
+sign-in sends the callback to production and your local session never gets set. if you
+re-pull the vercel env, put the localhost value back in `.env.local` afterwards.
+
+why the wrong value is not immediately fatal: on vercel, `process.env.VERCEL` is set, so
+next-auth derives the origin from the request host (`utils/detect-origin.js`) and ignores
+`NEXTAUTH_URL` for the redirect_uri. in the browser, `process.env.NEXTAUTH_URL` is not
+exposed, so `parseUrl(undefined)` yields the relative base path `/api/auth` and the
+client calls the same origin. it only bites when the app runs anywhere that is not
+vercel — `vercel dev`, self-hosting, a container.
+
 ## local dev notes
 
 - `npm run dev` runs `node utils-patch.js` first (`predev`). it is a turbopack

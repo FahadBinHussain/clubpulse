@@ -46,6 +46,7 @@ export const authOptions: NextAuthOptions = {
       const userEmailLower = user.email.toLowerCase();
       let correctRole: Role = Role.GUEST; // Default to GUEST
       let specificRoleFromSheet: string | null = null; // Initialize specific role
+      let roleSyncError: string | null = null; // Null = the sync worked
 
       try {
         // REMOVED: Logic for checking separate panel sheet range
@@ -53,9 +54,16 @@ export const authOptions: NextAuthOptions = {
         // if (panelSheetRange) { ... }
 
         // Check member sheet for role
-        if (memberSheetRange) {
+        if (!memberSheetRange) {
+          roleSyncError =
+            "GOOGLE_SHEET_MEMBER_DATA_RANGE is not set.";
+          console.error(roleSyncError);
+        } else {
           const memberData = await getSheetData(memberSheetRange);
-          if (memberData) {
+          if (memberData === null) {
+            roleSyncError = `Could not read the club activity sheet (${memberSheetRange}).`;
+            console.error(roleSyncError);
+          } else {
             let userFound = false;
             for (const row of memberData) {
               const sheetEmail = row && String(row[MEMBER_EMAIL_COLUMN_INDEX]).trim().toLowerCase();
@@ -65,7 +73,7 @@ export const authOptions: NextAuthOptions = {
               if (sheetEmail === userEmailLower) {
                 userFound = true;
                 specificRoleFromSheet = sheetRoleRaw; // Store the exact role string from the sheet
-                
+
                 if (panelRolesList.includes(sheetRoleLower)) {
                   correctRole = Role.PANEL;
                   console.log(`User ${user.email} found in member sheet with PANEL role: ${specificRoleFromSheet}.`);
@@ -80,28 +88,33 @@ export const authOptions: NextAuthOptions = {
                console.log(`User ${user.email} not found in member sheet, assigning GUEST role.`);
                // correctRole remains GUEST, specificRoleFromSheet remains null
             }
-          } else {
-            console.error("Failed to fetch member data during signIn event. Assigning GUEST role.");
-             // correctRole remains GUEST, specificRoleFromSheet remains null
           }
-        } else {
-          console.warn("Member sheet range not configured. Cannot determine role. Assigning GUEST role.");
-          // correctRole remains GUEST, specificRoleFromSheet remains null
         }
 
         // Update user role and specificRole in database
         console.log(`Final determined role: ${correctRole}, Specific Role: ${specificRoleFromSheet || 'None'}. Updating database...`);
         await prisma.user.update({
           where: { email: user.email },
-          data: { 
-            role: correctRole, 
-            specificRole: specificRoleFromSheet // Save the specific role string (or null)
+          data: {
+            role: correctRole,
+            specificRole: specificRoleFromSheet, // Save the specific role string (or null)
+            roleSyncError, // Persist the failure reason so the UI can surface it (null clears it)
           },
         });
         console.log(`Database roles updated for ${user.email}: Role=${correctRole}, SpecificRole=${specificRoleFromSheet || 'null'}`);
 
       } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
         console.error(`Error during role sync in signIn event for ${user.email}:`, error);
+        // Best effort: make the failure visible in the UI instead of silently degrading.
+        try {
+          await prisma.user.update({
+            where: { email: user.email },
+            data: { roleSyncError: `Role sync failed: ${reason}` },
+          });
+        } catch (persistError) {
+          console.error(`Could not persist roleSyncError for ${user.email}:`, persistError);
+        }
       }
     }
   },
@@ -111,6 +124,7 @@ export const authOptions: NextAuthOptions = {
         session.user.id = user.id;
         session.user.role = user.role;
         session.user.specificRole = user.specificRole;
+        session.user.roleSyncError = user.roleSyncError;
       }
       return session;
     },
@@ -128,11 +142,13 @@ declare module 'next-auth' {
       image?: string | null;
       role: Role; // Keep the broad role
       specificRole?: string | null; // Add the specific role
+      roleSyncError?: string | null; // Set when the role sync failed (null = ok)
     };
   }
 
   interface User {
     role: Role; // Keep the broad role
     specificRole?: string | null; // Add the specific role
+    roleSyncError?: string | null; // Set when the role sync failed (null = ok)
   }
 } 
